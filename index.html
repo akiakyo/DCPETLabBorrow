@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="DCPET Lab Equipment Borrowing and Inventory System — front-end prototype">
+  <title>DCPET Lab Equipment Borrowing &amp; Inventory</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#app">Skip to main content</a>
+
+  <div class="app-shell">
+    <!-- header: brand + session -->
+    <header class="app-header">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">LB</span>
+        <div>
+          <p class="brand-title">DCPET LabBorrow</p>
+          <p class="brand-subtitle">Lab Equipment Borrowing &amp; Inventory System</p>
+        </div>
+      </div>
+
+      <!-- session/role, unit 7 -->
+      <section class="session-box" id="session" aria-labelledby="session-title">
+        <h2 id="session-title" class="visually-hidden">Current session</h2>
+        <p class="session-text">Signed in as <strong id="session-name">Lab Staff (demo)</strong></p>
+        <p class="session-note">Role switching: Unit 7</p>
+      </section>
+
+      <button type="button" class="nav-toggle" id="nav-toggle"
+              aria-expanded="false" aria-controls="primary-nav">
+        <span aria-hidden="true">☰</span> Menu
+      </button>
+    </header>
+
+    <!-- nav -->
+    <nav class="primary-nav" id="primary-nav" aria-label="Primary">
+      <ul>
+        <li><a href="#dashboard" data-view-link="dashboard">Dashboard</a></li>
+        <li><a href="#requests" data-view-link="requests">Borrow Requests</a></li>
+        <li><a href="#new-request" data-view-link="new-request">New Request</a></li>
+        <li><a href="#equipment" data-view-link="equipment">Inventory</a></li>
+        <li><a href="#activity" data-view-link="activity">Activity Log</a></li>
+        <li><a href="#settings" data-view-link="settings">Settings &amp; Data</a></li>
+      </ul>
+    </nav>
+
+    <main id="app" tabindex="-1">
+      <!-- dashboard -->
+      <section id="dashboard" class="view" aria-labelledby="dashboard-title">
+        <h1 id="dashboard-title" class="view-title" tabindex="-1">Dashboard</h1>
+        <p class="view-lead">Current state of all borrow requests. Values are computed from the request records.</p>
+
+        <!-- kpi cards from renderSummary() -->
+        <div class="kpi-grid" id="kpi-grid" aria-live="polite"></div>
+
+        <div class="dashboard-grid">
+          <section class="panel" aria-labelledby="recent-title">
+            <h2 id="recent-title">Recent requests</h2>
+            <ol class="recent-list" id="recent-list"></ol>
+            <!-- empty state -->
+            <p class="empty-note" id="recent-empty" hidden>No borrow requests yet.</p>
+          </section>
+
+          <section class="panel" aria-labelledby="status-summary-title">
+            <h2 id="status-summary-title">Requests by status</h2>
+            <ul class="status-list" id="status-list"></ul>
+          </section>
+        </div>
+      </section>
+
+      <!-- borrow requests list -->
+      <section id="requests" class="view" aria-labelledby="requests-title" hidden>
+        <h1 id="requests-title" class="view-title" tabindex="-1">Borrow Requests</h1>
+
+        <!-- search/filter/sort, full version in unit 5 -->
+        <form class="toolbar" id="toolbar" role="search" aria-label="Search and filter requests">
+          <div class="field">
+            <label for="search">Search</label>
+            <input type="search" id="search" name="search"
+                   placeholder="ID, borrower, equipment, purpose…" autocomplete="off">
+          </div>
+          <div class="field">
+            <label for="filter-status">Status</label>
+            <select id="filter-status" name="status">
+              <option value="ALL">All statuses</option>
+              <option value="PENDING">Pending</option>
+              <option value="APPROVED">Approved</option>
+              <option value="BORROWED">Borrowed</option>
+              <option value="OVERDUE">Overdue</option>
+              <option value="RETURNED">Returned</option>
+              <option value="REJECTED">Rejected</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="filter-category">Category</label>
+            <select id="filter-category" name="category">
+              <option value="ALL">All categories</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="filter-type">Borrower type</label>
+            <select id="filter-type" name="borrowerType">
+              <option value="ALL">All borrowers</option>
+              <option value="Student">Student</option>
+              <option value="Faculty">Faculty</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="sort-key">Sort by</label>
+            <select id="sort-key" name="sortKey">
+              <option value="createdAt">Date requested</option>
+              <option value="borrowDate">Borrow date</option>
+              <option value="dueDate">Due date</option>
+              <option value="borrowerName">Borrower name</option>
+              <option value="equipmentName">Equipment</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="sort-dir">Order</label>
+            <select id="sort-dir" name="sortDir">
+              <option value="desc">Newest / Z–A first</option>
+              <option value="asc">Oldest / A–Z first</option>
+            </select>
+          </div>
+        </form>
+
+        <p class="result-count" id="result-count" role="status"></p>
+
+        <div class="content-layout" id="requests-layout">
+          <div class="records-region">
+            <!-- normal state -->
+            <div class="table-wrap" id="table-wrap">
+              <table class="data-table">
+                <caption class="visually-hidden">Borrow requests</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Request ID</th>
+                    <th scope="col">Borrower</th>
+                    <th scope="col">Equipment</th>
+                    <th scope="col" class="col-optional">Qty</th>
+                    <th scope="col">Borrow → Due</th>
+                    <th scope="col">Status</th>
+                    <th scope="col"><span class="visually-hidden">Actions</span></th>
+                  </tr>
+                </thead>
+                <tbody id="records-body"></tbody>
+              </table>
+            </div>
+
+            <!-- empty state -->
+            <div class="empty-state" id="empty-state" hidden></div>
+
+            <nav class="pagination" id="pagination" aria-label="Request list pages"></nav>
+          </div>
+
+          <!-- request details -->
+          <section id="request-details" class="panel details-panel"
+                   aria-labelledby="details-title" hidden>
+            <h2 id="details-title" tabindex="-1">Request details</h2>
+            <div id="details-body"></div>
+          </section>
+        </div>
+      </section>
+
+      <!-- new request form -->
+      <section id="new-request" class="view" aria-labelledby="new-request-title" hidden>
+        <h1 id="new-request-title" class="view-title" tabindex="-1">New Borrow Request</h1>
+        <p class="view-lead">Fields marked <span aria-hidden="true">*</span><span class="visually-hidden">with an asterisk</span> are required.</p>
+
+        <!-- error summary -->
+        <div class="alert alert-error" id="error-summary" tabindex="-1" role="alert" hidden>
+          <h2>Please fix the following:</h2>
+          <ul id="error-list"></ul>
+        </div>
+
+        <!-- success msg -->
+        <div class="alert alert-success" id="form-success" role="status" hidden></div>
+
+        <form id="request-form" class="form-grid" novalidate>
+          <fieldset>
+            <legend>Borrower</legend>
+
+            <div class="field">
+              <label for="f-borrowerId">Student / Faculty ID *</label>
+              <input id="f-borrowerId" name="borrowerId" type="text" required
+                     pattern="[0-9]{4}-[0-9]{5}|F-[0-9]{4}" maxlength="10"
+                     aria-describedby="hint-borrowerId err-borrowerId" autocomplete="off">
+              <p class="hint" id="hint-borrowerId">Student: 2023-00142 · Faculty: F-0031</p>
+              <p class="error" id="err-borrowerId" data-error-for="borrowerId"></p>
+            </div>
+
+            <div class="field">
+              <label for="f-borrowerName">Full name *</label>
+              <input id="f-borrowerName" name="borrowerName" type="text" required
+                     minlength="3" maxlength="60" aria-describedby="err-borrowerName" autocomplete="name">
+              <p class="error" id="err-borrowerName" data-error-for="borrowerName"></p>
+            </div>
+
+            <div class="field">
+              <label for="f-borrowerEmail">School email *</label>
+              <input id="f-borrowerEmail" name="borrowerEmail" type="email" required
+                     maxlength="80" aria-describedby="err-borrowerEmail" autocomplete="email">
+              <p class="error" id="err-borrowerEmail" data-error-for="borrowerEmail"></p>
+            </div>
+
+            <fieldset class="radio-group" aria-describedby="err-borrowerType">
+              <legend>Borrower type *</legend>
+              <label><input type="radio" name="borrowerType" value="Student" required checked> Student</label>
+              <label><input type="radio" name="borrowerType" value="Faculty"> Faculty</label>
+              <p class="error" id="err-borrowerType" data-error-for="borrowerType"></p>
+            </fieldset>
+          </fieldset>
+
+          <fieldset>
+            <legend>Equipment and schedule</legend>
+
+            <div class="field">
+              <label for="f-equipmentId">Equipment *</label>
+              <select id="f-equipmentId" name="equipmentId" required aria-describedby="err-equipmentId">
+                <option value="">— Select equipment —</option>
+              </select>
+              <p class="error" id="err-equipmentId" data-error-for="equipmentId"></p>
+            </div>
+
+            <div class="field">
+              <label for="f-quantity">Quantity *</label>
+              <input id="f-quantity" name="quantity" type="number" required min="1" max="5" step="1" value="1"
+                     aria-describedby="hint-quantity err-quantity">
+              <p class="hint" id="hint-quantity">1–5 units per request.</p>
+              <p class="error" id="err-quantity" data-error-for="quantity"></p>
+            </div>
+
+            <div class="field">
+              <label for="f-borrowDate">Borrow date *</label>
+              <input id="f-borrowDate" name="borrowDate" type="date" required aria-describedby="err-borrowDate">
+              <p class="error" id="err-borrowDate" data-error-for="borrowDate"></p>
+            </div>
+
+            <div class="field">
+              <label for="f-dueDate">Return due date *</label>
+              <input id="f-dueDate" name="dueDate" type="date" required aria-describedby="err-dueDate">
+              <p class="error" id="err-dueDate" data-error-for="dueDate"></p>
+            </div>
+
+            <div class="field">
+              <label for="f-purpose">Purpose *</label>
+              <select id="f-purpose" name="purpose" required aria-describedby="err-purpose">
+                <option value="">— Select purpose —</option>
+                <option>Class activity</option>
+                <option>Project</option>
+                <option>Thesis</option>
+                <option>Other</option>
+              </select>
+              <p class="error" id="err-purpose" data-error-for="purpose"></p>
+            </div>
+
+            <!-- required only when purpose = other -->
+            <div class="field field-wide">
+              <label for="f-purposeDetails">Purpose details <span id="details-required-mark" hidden>*</span></label>
+              <textarea id="f-purposeDetails" name="purposeDetails" rows="3" maxlength="200"
+                        aria-describedby="hint-purposeDetails err-purposeDetails"></textarea>
+              <p class="hint" id="hint-purposeDetails">Required when purpose is “Other”.</p>
+              <p class="error" id="err-purposeDetails" data-error-for="purposeDetails"></p>
+            </div>
+          </fieldset>
+
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Submit request</button>
+            <button type="reset" class="btn">Clear form</button>
+          </div>
+        </form>
+      </section>
+
+      <!-- inventory -->
+      <section id="equipment" class="view" aria-labelledby="equipment-title" hidden>
+        <h1 id="equipment-title" class="view-title" tabindex="-1">Equipment Inventory</h1>
+        <p class="view-lead">Available units are derived: total units minus units on approved or borrowed requests.</p>
+        <div class="equipment-grid" id="equipment-grid"></div>
+      </section>
+
+      <!-- activity log, unit 6 & 8 -->
+      <section id="activity" class="view" aria-labelledby="activity-title" hidden>
+        <h1 id="activity-title" class="view-title" tabindex="-1">Activity Log</h1>
+        <!-- empty state -->
+        <div class="empty-state">
+          <p><strong>No activity recorded yet.</strong></p>
+          <p>Status history (Unit 6) and the audit trail (Unit 8) will appear here.</p>
+        </div>
+      </section>
+
+      <!-- settings & data -->
+      <section id="settings" class="view" aria-labelledby="settings-title" hidden>
+        <h1 id="settings-title" class="view-title" tabindex="-1">Settings &amp; Data</h1>
+
+        <div class="dashboard-grid">
+          <section class="panel" aria-labelledby="prefs-title">
+            <h2 id="prefs-title">Display preferences</h2>
+            <div class="field">
+              <label for="pref-theme">Theme</label>
+              <select id="pref-theme">
+                <option value="system">Match system</option>
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+              </select>
+            </div>
+            <p class="hint">Saving preferences across visits is added in Unit 8.</p>
+          </section>
+
+          <section class="panel" aria-labelledby="data-title">
+            <h2 id="data-title">Data management</h2>
+            <p>Export, import and reset are added in Unit 8.</p>
+            <div class="button-row">
+              <button type="button" class="btn" disabled>Export JSON</button>
+              <button type="button" class="btn" disabled>Import JSON</button>
+              <button type="button" class="btn btn-danger" disabled>Reset data</button>
+            </div>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <footer class="app-footer">
+      <p>DCPET LabBorrow — front-end prototype</p>
+    </footer>
+  </div>
+
+  <!-- #live for screen readers, #toast is the visual -->
+  <p class="visually-hidden" id="live" role="status" aria-live="polite"></p>
+  <div class="toast" id="toast" aria-hidden="true" hidden></div>
+
+  <script src="js/data.js" defer></script>
+  <script src="js/model.js" defer></script>
+  <script src="js/state.js" defer></script>
+  <script src="js/render.js" defer></script>
+  <script src="js/app.js" defer></script>
+  <script src="js/tests.js" defer></script>
+</body>
+</html>
