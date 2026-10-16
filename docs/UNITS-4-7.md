@@ -274,12 +274,12 @@ The **Demo: switch user / role** control in the header is for demonstration and 
 | Approve or reject | — | ✓ | ✓ | **Not your own request** |
 | Release equipment | — | ✓ | ✓ | **Not your own request** |
 | Receive returned equipment | — | ✓ | ✓ | |
-| Delete requests | — | — | ✓ | **Closed requests only** |
+| Delete requests | — | — | ✓ | Any status (changed after Unit 10 review; open requests get an extra warning) |
 | View the inventory | ✓ | ✓ | ✓ | |
 | View the activity log | — | ✓ | ✓ | |
 | Manage system data | — | — | ✓ | |
 
-Eight capabilities depend on ownership or record status. The same matrix is printed in **Settings & Data → Roles and permissions**, generated from `ROLE_PERMISSIONS`, so the page cannot disagree with the code.
+Seven capabilities depend on ownership or record status. (Delete was the eighth until the Unit 10 review, when the lab head asked to delete requests in any status from the list checkboxes.) The same matrix is printed in **Settings & Data → Roles and permissions**, generated from `ROLE_PERMISSIONS`, so the page cannot disagree with the code.
 
 ### 7.3 How the model is applied
 
@@ -309,13 +309,13 @@ Roles in this prototype are simulated in the browser. Anyone can change the role
 | P-09 | Borrower cancels own Pending / own Borrowed | allowed / denied | allowed / denied | PASS |
 | P-10 | Cancel someone else's Approved request as staff / as borrower | allowed / denied | allowed / denied | PASS |
 | P-11 | **Role:** delete a closed request as staff / as lab head | denied / allowed | denied / allowed | PASS |
-| P-12 | **Status:** lab head deletes a Borrowed request | denied | denied | PASS |
+| P-12 | Lab head deletes a Borrowed / Pending request; staff and borrower try (updated after the review) | allowed, allowed / denied, denied | same | PASS |
 | P-13 | Activity Log in navigation: borrower / staff / lab head | no / yes / yes | no / yes / yes | PASS |
 | P-14 | Manage data and file-for-others per role | head only / staff + head | same | PASS |
 | P-15 | Borrower calls approve directly | `ForbiddenError`, record unchanged | same | PASS |
 | P-16 | Lab head approves his own new request | `ForbiddenError` | `ForbiddenError` | PASS |
 | P-17 | Workflow buttons on a Pending request: borrower / staff | Cancel only / Approve, Reject, Cancel | same | PASS |
-| P-18 | Live: `deleteRecord()` on an open request | `ForbiddenError`, `state.records` unchanged | same | PASS |
+| P-18 | Live: lab staff call `deleteRecord()` | `ForbiddenError`, `state.records` unchanged | same | PASS |
 
 18 of 18 pass.
 

@@ -29,7 +29,7 @@ const PERMISSION_CONDITIONS = {
   "request:cancel-any": "While Pending or Approved",
   "request:review": "Not your own request",
   "request:release": "Not your own request",
-  "request:delete": "Closed requests only (Returned, Rejected, Cancelled)"
+  "request:delete": "Any status; open requests get an extra warning before deleting"
 };
 
 const BORROWER_PERMISSIONS = [
@@ -85,9 +85,8 @@ const RECORD_RULES = {
   "request:review": (s, r) =>
     (isOwner(s, r) ? "You cannot approve or reject your own request. Another staff member must review it." : null),
   "request:release": (s, r) =>
-    (isOwner(s, r) ? "You cannot release equipment for your own request. Another staff member must release it." : null),
-  "request:delete": (s, r) =>
-    (!CLOSED_STATUSES.includes(r.status) ? `Only closed requests (Returned, Rejected or Cancelled) can be deleted. ${r.id} is ${statusWord(r)}.` : null)
+    (isOwner(s, r) ? "You cannot release equipment for your own request. Another staff member must release it." : null)
+  // request:delete has no record rule: the lab head may delete a request in any status (warned first in deleteRecords)
 };
 
 // without a record this is a role-level check (used for navigation)

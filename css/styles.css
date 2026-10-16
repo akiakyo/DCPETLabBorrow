@@ -581,15 +581,17 @@ label:has(input:disabled) { color: var(--text-muted); }
 
 /* bulk selection: checkbox column on the left, only for roles that can delete */
 .data-table:not(.has-select) .col-select { display: none; }
-.data-table .col-select { width: 1%; padding-inline: var(--space-2) 0; vertical-align: middle; }
+/* the box sits on the same line as the request id next to it */
+.data-table .col-select { width: 1%; padding-inline: var(--space-2) 0; }
 .select-box {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   min-width: 2rem;
-  min-height: 2rem;
+  min-height: 1.3rem;
   cursor: pointer;
 }
+@media (min-width: 48em) { .data-table thead .select-box { min-height: 0; } }
 input[type="checkbox"] { width: 1.15rem; height: 1.15rem; min-height: 0; margin: 0; accent-color: var(--brand); cursor: pointer; }
 input[type="checkbox"]:disabled { cursor: not-allowed; }
 /* ticked for deletion: tinted, and the checked box says it in text to screen readers */

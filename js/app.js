@@ -204,7 +204,13 @@ function deleteRecords(ids) {
   const question = records.length === 1
     ? `Delete request ${records[0].id} (${records[0].borrowerName})? This cannot be undone.`
     : `Delete ${records.length} requests (${unique.join(", ")})? This cannot be undone.`;
-  if (!confirm(question)) {
+  // open requests are deletable, but deleting one loses track of a pending decision or of equipment still out
+  const open = records.filter(r => OPEN_STATUSES.includes(r.status));
+  const borrowed = open.filter(r => r.status === "BORROWED").map(r => r.id);
+  const warning = !open.length ? ""
+    : `\n\nWarning: still open: ${open.map(r => `${r.id} (${statusWord(r)})`).join(", ")}.` +
+      (borrowed.length ? `\nEquipment is still out on loan for ${borrowed.join(", ")}; deleting removes that record.` : "");
+  if (!confirm(question + warning)) {
     announce("Delete cancelled. No changes were made.");
     return [];
   }

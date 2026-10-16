@@ -323,7 +323,9 @@ function runPermissionTests() {
     [true, false], [can(staff, CANCEL_PERMS, get("0008")), can(student, CANCEL_PERMS, get("0008"))]);
   t.check("P-11", "Role: staff cannot delete a closed request (0001); lab head can",
     [false, true], [can(staff, "request:delete", get("0001")), can(admin, "request:delete", get("0001"))]);
-  t.check("P-12", "Status: lab head cannot delete a request that is still Borrowed (0004)", false, can(admin, "request:delete", get("0004")));
+  t.check("P-12", "Lab head may delete a request in any status (Borrowed 0004, Pending 0016); staff and borrowers may not",
+    [true, true, false, false],
+    [can(admin, "request:delete", get("0004")), can(admin, "request:delete", get("0016")), can(staff, "request:delete", get("0004")), can(student, "request:delete", get("0016"))]);
   t.check("P-13", "Navigation: Activity Log is offered to staff and lab head, not to borrowers",
     [false, true, true], [student, staff, admin].map(s => navItemsFor(s).some(item => item.view === "activity")));
   t.check("P-14", "Only the lab head can manage data; only staff and lab head can file for another borrower",
@@ -343,31 +345,21 @@ function runPermissionTests() {
     [availableActions(get("0016"), student, testContext("2024-00077", records)).map(a => a.to),
       availableActions(get("0016"), staff, testContext("S-0004", records)).map(a => a.to)]);
 
-  // live: deleting an open request is refused for every role, before the confirm dialog
-  const open = state.records.find(rec => OPEN_STATUSES.includes(rec.status));
-  if (open) {
-    const snapshot = JSON.stringify(state.records);
-    const liveError = thrownBy(() => deleteRecord(open.id));
-    t.check("P-18", `Live: deleteRecord("${open.id}") on an open request throws ForbiddenError and state.records is unchanged`,
-      ["ForbiddenError", true], [liveError, JSON.stringify(state.records) === snapshot]);
-  }
-
-  // live bulk delete: the lab head ticks one closed and one open request → the whole batch is refused
-  const closedOne = state.records.find(rec => CLOSED_STATUSES.includes(rec.status));
-  if (open && closedOne) {
+  // live: these run as a fixed user and must be refused before the confirm dialog, so nothing is ever deleted on load
+  const asUser = (userId, fn) => {
     const savedSession = state.session;
+    state.session = sessionFor(userId);
+    try { return thrownBy(fn); } finally { state.session = savedSession; }
+  };
+  const first = state.records[0];
+  if (first) {
     const snapshot = JSON.stringify([state.records, state.audit]);
-    let batchError;
-    state.session = sessionFor("F-0017");
-    try {
-      batchError = thrownBy(() => deleteRecords([closedOne.id, open.id]));
-    } finally {
-      state.session = savedSession;
-    }
-    t.check("P-19", `Live: bulk delete of ${closedOne.id} (closed) + ${open.id} (open) by the lab head is refused as a whole; nothing deleted`,
-      ["ForbiddenError", true], [batchError, JSON.stringify([state.records, state.audit]) === snapshot]);
+    t.check("P-18", `Live: lab staff calling deleteRecord("${first.id}") gets ForbiddenError; records and audit unchanged`,
+      ["ForbiddenError", true], [asUser("S-0004", () => deleteRecord(first.id)), JSON.stringify([state.records, state.audit]) === snapshot]);
+    t.check("P-19", `Live: lab head bulk-deleting ${first.id} + a request that does not exist is refused as a whole; nothing deleted`,
+      ["NotFoundError", true], [asUser("F-0017", () => deleteRecords([first.id, "BR-2026-9999"])), JSON.stringify([state.records, state.audit]) === snapshot]);
   }
-  t.check("P-20", "Live: bulk delete with nothing selected is refused", "ValidationError", thrownBy(() => deleteRecords([])));
+  t.check("P-20", "Live: bulk delete with nothing selected is refused", "ValidationError", asUser("F-0017", () => deleteRecords([])));
 
   return t;
 }

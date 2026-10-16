@@ -239,7 +239,7 @@ Data: the 17 seed requests on 2026-10-02 (fixed date used by the tests). “Manu
 
 Headless Chrome was driven over the DevTools protocol by a script that clicks, types and presses keys in the real page, reloads it, writes broken data into `localStorage`, and picks files for import. Same steps, same results each run. The run was on 2026-10-16, the real date, so date-dependent results use that day; the console suites use a fixed 2026-10-02.
 
-### 10.4 Functional tests (27)
+### 10.4 Functional tests (28)
 
 | ID | Area | Precondition → action | Expected | Actual | P/F |
 |---|---|---|---|---|---|
@@ -268,10 +268,11 @@ Headless Chrome was driven over the DevTools protocol by a script that clicks, t
 | F-23 | Navigation | 360 px: Menu button | nav hidden → opens → navigates → closes (`aria-expanded`) | same | PASS |
 | F-24 | Workflow + dashboard | Mark 0004 returned (late) | Overdue 6 → 5, on-time 75% → 60%, approval rate unchanged | same | PASS |
 | F-25 | Bulk delete | Lab head: Status Returned → select page → untick 0004 → change filter and page size → Delete selected | 5 ticked, then 4 (header box indeterminate, focus stays on the box); selection kept with “not on this page” count; one confirm deletes the 4; 4 DELETE audit entries “(bulk delete of 4)”; selection cleared; scroll position kept | same | PASS |
-| F-26 | Bulk delete + roles | Switch to staff, then back to lab head | staff: no checkbox column, no bulk bar; lab head: boxes only on Returned/Rejected/Cancelled rows | same | PASS |
+| F-26 | Bulk delete + roles | Lab head on page 1 (only open requests); then staff | lab head: a box beside every request ID, header box enabled and ticks every row on the page; staff: no checkbox column, no bulk bar | same | PASS |
 | F-27 | Scroll position | Scroll to the bottom → Next page; scroll Approve far below the details heading → Approve | page stays where it was (moves only if the page got shorter and the browser clamps to the new bottom); request Approved; focus on the panel heading without scrolling to it | same | PASS |
+| F-28 | Bulk delete, open request | Lab head ticks an overdue Borrowed request → Delete selected | confirm warns it is still open and equipment is out on loan; request removed; audit DELETE | same | PASS |
 
-**27 of 27 pass.**
+**28 of 28 pass.**
 
 ### 10.5 Negative / resilience tests (9)
 
@@ -347,7 +348,7 @@ Screenshots: `docs/screenshots/dashboard-{360,768,1024,1440}.png`, `settings-imp
 
 | Dimension | Evidence | Passed | Score |
 |---|---|---|---|
-| F — Functionality | §10.4 | 27 / 27 | 100% |
+| F — Functionality | §10.4 | 28 / 28 | 100% |
 | R — Responsiveness | §10.6 | 5 / 5 | 100% |
 | A — Accessibility | §10.7 | 9 / 9 | 100% |
 | V — Validation / resilience | §10.5 | 9 / 9 | 100% |
@@ -384,13 +385,14 @@ With no back end, the UI is the only place rules can live. Hiding a button stops
 
 ### 10.12 Added after review: bulk delete and scroll position
 
-**Bulk delete.** The request list has a checkbox column on the left for the lab head, the only role that can delete.
+**Bulk delete.** The request list has a checkbox beside every request ID for the lab head, the only role that can delete. After the review the delete rule was widened: the lab head may delete a request in **any status**, not only closed ones (see the Unit 7 permission table).
 
-- A box appears only on rows that may be deleted (closed requests: Returned, Rejected, Cancelled). The header box selects or clears every deletable row on the current page, and shows a mixed state when only some are ticked.
+- Every row gets a box. The header box selects or clears every row on the current page, and shows a mixed state when only some are ticked.
+- If the selection includes open requests, the confirm dialog lists them with their status; for Borrowed (including overdue) requests it also warns that the equipment is still out on loan and deleting removes that record.
 - A bar above the table offers *Select all on this page*, *Delete selected (n)* and *Clear selection*. Its count is a `role="status"` live region and says how many ticked requests are on other pages, because the selection is kept across paging, search and filters.
-- `deleteRecords(ids)` in `app.js` is now the only delete function; the single-row delete calls it with one ID. It checks every ID before changing anything, so one open or missing request refuses the whole batch (test P-19). It asks for one confirmation listing the IDs and writes one `DELETE` audit entry per request. An empty batch is refused (P-20).
+- `deleteRecords(ids)` in `app.js` is now the only delete function; the single-row delete calls it with one ID. It checks every ID before changing anything, so one missing request or a role without delete permission refuses the whole batch (P-18, P-19). It asks for one confirmation listing the IDs and writes one `DELETE` audit entry per request. An empty batch is refused (P-20).
 - The selection is UI state, not saved. It is cleared on user switch, import and reset, and pruned on every render to requests that still exist and can still be deleted.
-- On phones each box has a 44 px tap target, and rows that cannot be deleted show no empty “Select” line. With the extra column, Qty moves to the details panel below 1280 px, and docked-panel cells use less side padding, so the table still never scrolls sideways (R-360 to R-1440).
+- On phones each card starts with a “Select” line whose box has a 44 px tap target; the header box is replaced by “Select all on this page” in the bar. With the extra column, Qty moves to the details panel below 1280 px, and docked-panel cells use less side padding, so the table still never scrolls sideways (R-360 to R-1440).
 
 **Scroll position.** After an action (approve or other status changes, delete, bulk select, next/previous page, clear filters, closing details, import, reset, saving the form), keyboard focus still moves for screen-reader and keyboard users, but with `focus({ preventScroll: true })` (`focusQuietly()`), so the page stays where the user scrolled it. The page still scrolls in three cases:
 

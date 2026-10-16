@@ -175,7 +175,7 @@ function rowActions(r) {
   return buttons.join("");
 }
 
-// left column: a box only on rows this user may delete (lab head, closed requests)
+// left column: a box on every row for a role that may delete (the lab head)
 function selectCell(r) {
   if (!can(state.session, "request:delete", r)) return `<td class="col-select is-empty"></td>`;
   const id = escapeHtml(r.id);
@@ -252,7 +252,7 @@ function renderBulkBar(pageItems) {
   const offPage = count - onPage;
   const message = count
     ? `${plural(count, "request")} selected${offPage ? ` (${offPage} not on this page)` : ""}.`
-    : "Tick closed requests (Returned, Rejected or Cancelled) to delete several at once.";
+    : "Tick the box beside a request ID to select it, or the box in the header for the whole page.";
   // role=status: only touch the text when it changes, so it is not re-announced on every render
   if ($("#bulk-count").textContent !== message) $("#bulk-count").textContent = message;
 
