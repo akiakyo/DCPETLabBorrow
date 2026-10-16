@@ -1,5 +1,15 @@
 /* pure functions only, no dom */
 
+/* expected, user-facing failures. name is one of:
+   ForbiddenError, WorkflowError, ValidationError, NotFoundError */
+class AppError extends Error {
+  constructor(name, message, details = null) {
+    super(message);
+    this.name = name;
+    this.details = details;
+  }
+}
+
 /* dates (yyyy-mm-dd compares fine as strings) */
 function toISODate(date) {
   const y = date.getFullYear();
@@ -28,9 +38,33 @@ function formatDateTime(iso) {
   });
 }
 
+function localDateTime(date = new Date()) {
+  const time = [date.getHours(), date.getMinutes(), date.getSeconds()]
+    .map(n => String(n).padStart(2, "0")).join(":");
+  return `${toISODate(date)}T${time}`;
+}
+
+// real calendar date in yyyy-mm-dd
+function isValidISODate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value))) return false;
+  const [y, m, d] = value.split("-").map(Number);
+  const date = new Date(Date.UTC(y, m - 1, d));
+  return date.getUTCFullYear() === y && date.getUTCMonth() === m - 1 && date.getUTCDate() === d;
+}
+
+// 0 = sunday
+function weekdayOf(iso) {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+}
+
 /* lookups and derived values */
 function findEquipment(equipmentId, catalog = EQUIPMENT) {
   return catalog.find(item => item.id === equipmentId) || null;
+}
+
+function findUser(userId, users = USERS) {
+  return users.find(user => user.id === userId) || null;
 }
 
 // returns a new object, stored record untouched
@@ -76,10 +110,24 @@ function matchesQuery(record, query) {
     .some(value => normalize(value).includes(q));
 }
 
+const DEFAULT_FILTERS = { status: "ALL", category: "ALL", borrowerType: "ALL", dateFrom: "", dateTo: "" };
+const PAGE_SIZES = [5, 10, 20];
+const SORT_KEYS = ["createdAt", "borrowDate", "dueDate", "borrowerName", "equipmentName", "quantity"];
+
+// from > to is not a usable range
+function isValidDateRange(filters) {
+  return !(filters.dateFrom && filters.dateTo && filters.dateFrom > filters.dateTo);
+}
+
 function matchesFilters(record, filters) {
   if (filters.status !== "ALL" && record.displayStatus !== filters.status) return false;
   if (filters.category !== "ALL" && record.category !== filters.category) return false;
   if (filters.borrowerType !== "ALL" && record.borrowerType !== filters.borrowerType) return false;
+  // borrow-date range, both ends inclusive. an invalid range is ignored (the ui says so)
+  if (isValidDateRange(filters)) {
+    if (filters.dateFrom && record.borrowDate < filters.dateFrom) return false;
+    if (filters.dateTo && record.borrowDate > filters.dateTo) return false;
+  }
   return true;
 }
 
@@ -118,9 +166,87 @@ function selectPage(records, page, pageSize) {
   return records.slice(start, start + pageSize);
 }
 
+/* explorer (unit 5): one place decides when the page resets.
+   returns new ui values, the caller copies them into state */
+function applyExplorerChange(ui, change) {
+  const next = {
+    query: ui.query,
+    filters: { ...ui.filters },
+    sort: { ...ui.sort },
+    page: ui.page,
+    pageSize: ui.pageSize
+  };
+  switch (change.type) {
+    case "query":
+      next.query = change.value;
+      next.page = 1;
+      break;
+    case "filter":
+      next.filters[change.name] = change.value;
+      next.page = 1;
+      break;
+    case "sort":
+      next.sort = { ...next.sort, ...change.value };
+      next.page = 1;
+      break;
+    case "pageSize":
+      if (PAGE_SIZES.includes(change.value)) {
+        next.pageSize = change.value;
+        next.page = 1;
+      }
+      break;
+    case "page":
+      next.page = change.value; // clamped in getExplorerResult
+      break;
+    case "clear":
+      next.query = "";
+      next.filters = { ...DEFAULT_FILTERS };
+      next.page = 1;
+      break;
+    default:
+      throw new Error(`Unknown explorer change: ${change.type}`);
+  }
+  return next;
+}
+
+// search → filters → sort → count → page slice
+function getExplorerResult(records, ui, today = toISODate(new Date())) {
+  const matching = getVisibleRecords(records, ui, today);
+  const total = matching.length;
+  const totalPages = getTotalPages(total, ui.pageSize);
+  const page = Math.min(Math.max(1, Math.trunc(ui.page) || 1), totalPages);
+  const items = selectPage(matching, page, ui.pageSize);
+  const start = total === 0 ? 0 : (page - 1) * ui.pageSize + 1;
+  const end = total === 0 ? 0 : start + items.length - 1;
+  return { items, total, totalPages, page, start, end, hasPrev: page > 1, hasNext: page < totalPages };
+}
+
+function formatResultCount({ start, end, total }) {
+  if (total === 0) return "Showing 0 of 0 matching requests.";
+  return `Showing ${start}–${end} of ${total} matching request${total === 1 ? "" : "s"}.`;
+}
+
+// page numbers to show, null = gap
+function pageWindow(page, totalPages) {
+  if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1);
+  const keep = [1, page - 1, page, page + 1, totalPages].filter(p => p >= 1 && p <= totalPages);
+  const out = [];
+  let prev = 0;
+  [...new Set(keep)].sort((a, b) => a - b).forEach(p => {
+    if (p - prev > 1) out.push(null);
+    out.push(p);
+    prev = p;
+  });
+  return out;
+}
+
 /* record changes, always new arrays */
 function deleteById(records, id) {
   return records.filter(r => r.id !== id);
+}
+
+function replaceById(records, record) {
+  return records.map(r => (r.id === record.id ? record : r));
 }
 
 function findById(records, id) {

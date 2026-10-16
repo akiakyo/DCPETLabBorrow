@@ -2,7 +2,7 @@
    name/category/lab come from the catalog */
 
 // stored statuses only, overdue is derived
-const STATUSES = ["PENDING", "APPROVED", "BORROWED", "RETURNED", "REJECTED"];
+const STATUSES = ["PENDING", "APPROVED", "BORROWED", "RETURNED", "REJECTED", "CANCELLED"];
 
 const STATUS_LABELS = {
   PENDING: "Pending",
@@ -10,11 +10,29 @@ const STATUS_LABELS = {
   BORROWED: "Borrowed",
   OVERDUE: "Overdue",
   RETURNED: "Returned",
-  REJECTED: "Rejected"
+  REJECTED: "Rejected",
+  CANCELLED: "Cancelled"
 };
 
 // these statuses take units out of available
 const COMMITTED_STATUSES = ["APPROVED", "BORROWED"];
+
+// open = still in progress, closed = final
+const OPEN_STATUSES = ["PENDING", "APPROVED", "BORROWED"];
+const CLOSED_STATUSES = ["RETURNED", "REJECTED", "CANCELLED"];
+
+/* mock users for the role switch (unit 7). no passwords, demo only.
+   the lab head is also a faculty borrower, so "not your own request" rules can be shown */
+const ROLE_LABELS = { BORROWER: "Borrower", STAFF: "Lab staff", ADMIN: "Lab head (admin)" };
+
+const USERS = [
+  { id: "2024-00077", name: "Paolo Reyes",        role: "BORROWER", borrowerType: "Student", email: "preyes@school.edu.ph" },
+  { id: "F-0031",     name: "Engr. Liza Ramos",   role: "BORROWER", borrowerType: "Faculty", email: "lramos@school.edu.ph" },
+  { id: "S-0004",     name: "Jun Dela Cruz",      role: "STAFF",    borrowerType: null,      email: "jdelacruz@school.edu.ph" },
+  { id: "F-0017",     name: "Engr. Ramon Garcia", role: "ADMIN",    borrowerType: "Faculty", email: "rgarcia@school.edu.ph" }
+];
+
+const DEFAULT_USER_ID = "S-0004";
 
 const EQUIPMENT = [
   { id: "EQ-001", name: "Digital Oscilloscope",      category: "Electronics",      laboratory: "Electronics Lab (EN-201)",      totalUnits: 4,  condition: "Good" },
@@ -31,7 +49,7 @@ const EQUIPMENT = [
   { id: "EQ-012", name: "Logic Analyzer",            category: "Measurement",      laboratory: "Electronics Lab (EN-201)",      totalUnits: 2,  condition: "Good" }
 ];
 
-/* stored: id, borrower info, equipmentId, quantity, purpose, dates, status, remarks, createdAt, createdBy
+/* stored: id, borrower info, equipmentId, quantity, purpose, dates, status, remarks, createdAt, createdBy, history
    derived (model.js): equipmentName, category, laboratory, loanDays, isOverdue, daysOverdue, displayStatus, returnedLate */
 const SEED_REQUESTS = [
   { id: "BR-2026-0001", borrowerId: "2023-00142", borrowerName: "Andrea Santos",     borrowerType: "Student", borrowerEmail: "asantos@school.edu.ph",   equipmentId: "EQ-004", quantity: 2, purpose: "Class activity", purposeDetails: "",                               borrowDate: "2026-09-01", dueDate: "2026-09-05", returnedDate: "2026-09-05", status: "RETURNED", remarks: "",                          createdAt: "2026-08-30T09:15:00", createdBy: "2023-00142" },
@@ -52,3 +70,27 @@ const SEED_REQUESTS = [
   { id: "BR-2026-0016", borrowerId: "2024-00077", borrowerName: "Paolo Reyes",       borrowerType: "Student", borrowerEmail: "preyes@school.edu.ph",      equipmentId: "EQ-003", quantity: 1, purpose: "Thesis",         purposeDetails: "",                               borrowDate: "2026-10-01", dueDate: "2026-10-05", returnedDate: null,         status: "PENDING",  remarks: "",                          createdAt: "2026-09-24T10:12:00", createdBy: "2024-00077" },
   { id: "BR-2026-0017", borrowerId: "2022-00451", borrowerName: "Kristine Lim",      borrowerType: "Student", borrowerEmail: "klim@school.edu.ph",        equipmentId: "EQ-010", quantity: 1, purpose: "Thesis",         purposeDetails: "",                               borrowDate: "2026-09-05", dueDate: "2026-09-09", returnedDate: "2026-09-08", status: "RETURNED", remarks: "",                          createdAt: "2026-09-03T15:50:00", createdBy: "2022-00451" }
 ];
+
+// seed records get the status history that would have led to their status (unit 6)
+function seedHistory(r) {
+  const staff = "Jun Dela Cruz";
+  const reviewedAt = `${r.createdAt.slice(0, 10)}T17:30:00`;
+  const steps = [{ at: r.createdAt, from: null, to: "PENDING", action: "Submitted", actor: r.borrowerName, note: "" }];
+  if (r.status === "PENDING") return steps;
+  if (r.status === "REJECTED") {
+    steps.push({ at: reviewedAt, from: "PENDING", to: "REJECTED", action: "Rejected", actor: staff, note: r.remarks });
+    return steps;
+  }
+  steps.push({ at: reviewedAt, from: "PENDING", to: "APPROVED", action: "Approved", actor: staff, note: "" });
+  if (r.status === "APPROVED") return steps;
+  steps.push({ at: `${r.borrowDate}T08:30:00`, from: "APPROVED", to: "BORROWED", action: "Released", actor: staff, note: "" });
+  if (r.status === "RETURNED") {
+    steps.push({ at: `${r.returnedDate}T16:00:00`, from: "BORROWED", to: "RETURNED", action: "Returned", actor: staff, note: r.remarks });
+  }
+  return steps;
+}
+
+// fresh copy of the sample data: first visit, reset (unit 8) and the tests
+function seedRecords() {
+  return SEED_REQUESTS.map(r => ({ ...r, history: seedHistory(r) }));
+}

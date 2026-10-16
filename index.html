@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="DCPET Lab Equipment Borrowing and Inventory System — front-end prototype">
+  <meta name="description" content="DCPET Lab Equipment Borrowing and Inventory System">
   <title>DCPET Lab Equipment Borrowing &amp; Inventory</title>
   <link rel="stylesheet" href="css/styles.css">
 </head>
@@ -21,11 +21,15 @@
         </div>
       </div>
 
-      <!-- session/role, unit 7 -->
+      <!-- mock session + role switch (demo only) -->
       <section class="session-box" id="session" aria-labelledby="session-title">
         <h2 id="session-title" class="visually-hidden">Current session</h2>
-        <p class="session-text">Signed in as <strong id="session-name">Lab Staff (demo)</strong></p>
-        <p class="session-note">Role switching: Unit 7</p>
+        <p class="session-text">Signed in as <strong id="session-name"></strong>
+          <span class="badge badge-role" id="session-role"></span></p>
+        <div class="field session-switch">
+          <label for="role-switch">Demo: switch user / role</label>
+          <select id="role-switch"></select>
+        </div>
       </section>
 
       <button type="button" class="nav-toggle" id="nav-toggle"
@@ -34,9 +38,9 @@
       </button>
     </header>
 
-    <!-- nav -->
+    <!-- nav, re-rendered from the permission model -->
     <nav class="primary-nav" id="primary-nav" aria-label="Primary">
-      <ul>
+      <ul id="nav-list">
         <li><a href="#dashboard" data-view-link="dashboard">Dashboard</a></li>
         <li><a href="#requests" data-view-link="requests">Borrow Requests</a></li>
         <li><a href="#new-request" data-view-link="new-request">New Request</a></li>
@@ -47,10 +51,13 @@
     </nav>
 
     <main id="app" tabindex="-1">
+      <!-- forbidden-action / invalid-transition messages -->
+      <div id="notice-region" role="alert"></div>
+
       <!-- dashboard -->
       <section id="dashboard" class="view" aria-labelledby="dashboard-title">
         <h1 id="dashboard-title" class="view-title" tabindex="-1">Dashboard</h1>
-        <p class="view-lead">Current state of all borrow requests. Values are computed from the request records.</p>
+        <p class="view-lead" id="dashboard-lead">Current state of all borrow requests. Values are computed from the request records.</p>
 
         <!-- kpi cards from renderSummary() -->
         <div class="kpi-grid" id="kpi-grid" aria-live="polite"></div>
@@ -63,18 +70,37 @@
             <p class="empty-note" id="recent-empty" hidden>No borrow requests yet.</p>
           </section>
 
+          <!-- grouped summaries: text value next to every bar, never the bar alone -->
           <section class="panel" aria-labelledby="status-summary-title">
             <h2 id="status-summary-title">Requests by status</h2>
-            <ul class="status-list" id="status-list"></ul>
+            <ul class="bar-list" id="status-bars"></ul>
+            <p class="empty-note" id="status-bars-empty" hidden>No requests yet, so no shares are shown.</p>
+          </section>
+
+          <section class="panel" aria-labelledby="category-summary-title">
+            <h2 id="category-summary-title">Requests by equipment category</h2>
+            <ul class="bar-list" id="category-bars"></ul>
+            <p class="empty-note" id="category-bars-empty" hidden>No requests yet, so no shares are shown.</p>
+          </section>
+
+          <section class="panel" aria-labelledby="lab-summary-title">
+            <h2 id="lab-summary-title">Inventory use by laboratory</h2>
+            <p class="hint">Units approved or out on loan, out of each laboratory's total units.</p>
+            <ul class="bar-list bar-list-stacked" id="lab-bars"></ul>
           </section>
         </div>
+
+        <details class="panel formula-panel">
+          <summary>How these numbers are computed</summary>
+          <dl class="formula-list" id="metric-formulas"></dl>
+        </details>
       </section>
 
       <!-- borrow requests list -->
       <section id="requests" class="view" aria-labelledby="requests-title" hidden>
         <h1 id="requests-title" class="view-title" tabindex="-1">Borrow Requests</h1>
 
-        <!-- search/filter/sort, full version in unit 5 -->
+        <!-- search + filters + sort + page size. all of them combine -->
         <form class="toolbar" id="toolbar" role="search" aria-label="Search and filter requests">
           <div class="field">
             <label for="search">Search</label>
@@ -83,7 +109,7 @@
           </div>
           <div class="field">
             <label for="filter-status">Status</label>
-            <select id="filter-status" name="status">
+            <select id="filter-status" name="status" data-filter="status">
               <option value="ALL">All statuses</option>
               <option value="PENDING">Pending</option>
               <option value="APPROVED">Approved</option>
@@ -91,39 +117,63 @@
               <option value="OVERDUE">Overdue</option>
               <option value="RETURNED">Returned</option>
               <option value="REJECTED">Rejected</option>
+              <option value="CANCELLED">Cancelled</option>
             </select>
           </div>
           <div class="field">
             <label for="filter-category">Category</label>
-            <select id="filter-category" name="category">
+            <select id="filter-category" name="category" data-filter="category">
               <option value="ALL">All categories</option>
             </select>
           </div>
           <div class="field">
             <label for="filter-type">Borrower type</label>
-            <select id="filter-type" name="borrowerType">
+            <select id="filter-type" name="borrowerType" data-filter="borrowerType">
               <option value="ALL">All borrowers</option>
               <option value="Student">Student</option>
               <option value="Faculty">Faculty</option>
             </select>
           </div>
           <div class="field">
+            <label for="filter-from">Borrow date from</label>
+            <input type="date" id="filter-from" name="dateFrom" data-filter="dateFrom"
+                   aria-describedby="err-dateRange">
+          </div>
+          <div class="field">
+            <label for="filter-to">Borrow date to</label>
+            <input type="date" id="filter-to" name="dateTo" data-filter="dateTo"
+                   aria-describedby="err-dateRange">
+          </div>
+          <div class="field">
             <label for="sort-key">Sort by</label>
-            <select id="sort-key" name="sortKey">
+            <select id="sort-key" name="sortKey" data-sort="key">
               <option value="createdAt">Date requested</option>
               <option value="borrowDate">Borrow date</option>
               <option value="dueDate">Due date</option>
               <option value="borrowerName">Borrower name</option>
               <option value="equipmentName">Equipment</option>
+              <option value="quantity">Quantity</option>
             </select>
           </div>
           <div class="field">
             <label for="sort-dir">Order</label>
-            <select id="sort-dir" name="sortDir">
-              <option value="desc">Newest / Z–A first</option>
-              <option value="asc">Oldest / A–Z first</option>
+            <select id="sort-dir" name="sortDir" data-sort="direction">
+              <option value="desc">Descending (newest, Z–A, most)</option>
+              <option value="asc">Ascending (oldest, A–Z, fewest)</option>
             </select>
           </div>
+          <div class="field">
+            <label for="page-size">Per page</label>
+            <select id="page-size" name="pageSize">
+              <option value="5">5</option>
+              <option value="10">10</option>
+              <option value="20">20</option>
+            </select>
+          </div>
+          <div class="field toolbar-action">
+            <button type="button" class="btn" data-action="clear-filters">Clear search and filters</button>
+          </div>
+          <p class="error toolbar-wide" id="err-dateRange"></p>
         </form>
 
         <p class="result-count" id="result-count" role="status"></p>
@@ -182,6 +232,8 @@
           <fieldset>
             <legend>Borrower</legend>
 
+            <p class="hint field-wide" id="borrower-lock-note" hidden>Borrower details come from your signed-in account and cannot be changed.</p>
+
             <div class="field">
               <label for="f-borrowerId">Student / Faculty ID *</label>
               <input id="f-borrowerId" name="borrowerId" type="text" required
@@ -207,7 +259,7 @@
 
             <fieldset class="radio-group" aria-describedby="err-borrowerType">
               <legend>Borrower type *</legend>
-              <label><input type="radio" name="borrowerType" value="Student" required checked> Student</label>
+              <label><input type="radio" id="f-borrowerType" name="borrowerType" value="Student" required checked> Student</label>
               <label><input type="radio" name="borrowerType" value="Faculty"> Faculty</label>
               <p class="error" id="err-borrowerType" data-error-for="borrowerType"></p>
             </fieldset>
@@ -228,19 +280,23 @@
               <label for="f-quantity">Quantity *</label>
               <input id="f-quantity" name="quantity" type="number" required min="1" max="5" step="1" value="1"
                      aria-describedby="hint-quantity err-quantity">
-              <p class="hint" id="hint-quantity">1–5 units per request.</p>
+              <p class="hint" id="hint-quantity">1–5 units per request, up to the units available.</p>
               <p class="error" id="err-quantity" data-error-for="quantity"></p>
             </div>
 
             <div class="field">
               <label for="f-borrowDate">Borrow date *</label>
-              <input id="f-borrowDate" name="borrowDate" type="date" required aria-describedby="err-borrowDate">
+              <input id="f-borrowDate" name="borrowDate" type="date" required
+                     aria-describedby="hint-borrowDate err-borrowDate">
+              <p class="hint" id="hint-borrowDate">Today or later. The laboratory is closed on Sundays.</p>
               <p class="error" id="err-borrowDate" data-error-for="borrowDate"></p>
             </div>
 
             <div class="field">
               <label for="f-dueDate">Return due date *</label>
-              <input id="f-dueDate" name="dueDate" type="date" required aria-describedby="err-dueDate">
+              <input id="f-dueDate" name="dueDate" type="date" required
+                     aria-describedby="hint-dueDate err-dueDate">
+              <p class="hint" id="hint-dueDate">Students: up to 14 days. Faculty: up to 30 days.</p>
               <p class="error" id="err-dueDate" data-error-for="dueDate"></p>
             </div>
 
@@ -261,14 +317,15 @@
               <label for="f-purposeDetails">Purpose details <span id="details-required-mark" hidden>*</span></label>
               <textarea id="f-purposeDetails" name="purposeDetails" rows="3" maxlength="200"
                         aria-describedby="hint-purposeDetails err-purposeDetails"></textarea>
-              <p class="hint" id="hint-purposeDetails">Required when purpose is “Other”.</p>
+              <p class="hint" id="hint-purposeDetails">Required when purpose is “Other” (at least 10 characters).</p>
               <p class="error" id="err-purposeDetails" data-error-for="purposeDetails"></p>
             </div>
           </fieldset>
 
           <div class="form-actions">
-            <button type="submit" class="btn btn-primary">Submit request</button>
-            <button type="reset" class="btn">Clear form</button>
+            <button type="submit" class="btn btn-primary" id="form-submit">Submit request</button>
+            <button type="reset" class="btn" id="form-reset">Clear form</button>
+            <button type="button" class="btn" id="form-cancel-edit" data-action="cancel-edit" hidden>Cancel editing</button>
           </div>
         </form>
       </section>
@@ -280,14 +337,60 @@
         <div class="equipment-grid" id="equipment-grid"></div>
       </section>
 
-      <!-- activity log, unit 6 & 8 -->
+      <!-- activity log: audit trail + status history -->
       <section id="activity" class="view" aria-labelledby="activity-title" hidden>
         <h1 id="activity-title" class="view-title" tabindex="-1">Activity Log</h1>
-        <!-- empty state -->
-        <div class="empty-state">
-          <p><strong>No activity recorded yet.</strong></p>
-          <p>Status history (Unit 6) and the audit trail (Unit 8) will appear here.</p>
-        </div>
+        <p class="view-lead">What changed, who changed it and when. Both lists are saved with the data, newest first.</p>
+
+        <section class="log-section" aria-labelledby="audit-title">
+          <h2 id="audit-title">Audit trail</h2>
+          <p class="hint">Every request created, edited, moved to a new status or deleted, plus imports, resets and recoveries.</p>
+          <div class="table-wrap" id="audit-wrap">
+            <table class="data-table">
+              <caption class="visually-hidden">Audit trail</caption>
+              <thead>
+                <tr>
+                  <th scope="col">When</th>
+                  <th scope="col">Action</th>
+                  <th scope="col">Request</th>
+                  <th scope="col">By</th>
+                  <th scope="col">Details</th>
+                </tr>
+              </thead>
+              <tbody id="audit-body"></tbody>
+            </table>
+          </div>
+          <!-- empty state -->
+          <div class="empty-state" id="audit-empty" hidden>
+            <p><strong>No changes recorded yet.</strong></p>
+            <p>Creating, editing, approving, deleting, importing or resetting adds an entry here.</p>
+          </div>
+        </section>
+
+        <section class="log-section" aria-labelledby="status-log-title">
+          <h2 id="status-log-title">Status changes</h2>
+          <div class="table-wrap" id="activity-wrap">
+            <table class="data-table">
+              <caption class="visually-hidden">Status changes</caption>
+              <thead>
+                <tr>
+                  <th scope="col">When</th>
+                  <th scope="col">Request</th>
+                  <th scope="col">Status change</th>
+                  <th scope="col">Action</th>
+                  <th scope="col">By</th>
+                  <th scope="col">Note</th>
+                </tr>
+              </thead>
+              <tbody id="activity-body"></tbody>
+            </table>
+          </div>
+          <!-- empty state -->
+          <div class="empty-state" id="activity-empty" hidden>
+            <p><strong>No status changes recorded yet.</strong></p>
+            <p>Status changes appear here as requests are submitted and processed.</p>
+          </div>
+        </section>
       </section>
 
       <!-- settings & data -->
@@ -305,24 +408,78 @@
                 <option value="dark">Dark</option>
               </select>
             </div>
-            <p class="hint">Saving preferences across visits is added in Unit 8.</p>
+            <p class="hint">Theme, page size and sort order are saved in this browser.</p>
           </section>
 
-          <section class="panel" aria-labelledby="data-title">
-            <h2 id="data-title">Data management</h2>
-            <p>Export, import and reset are added in Unit 8.</p>
-            <div class="button-row">
-              <button type="button" class="btn" disabled>Export JSON</button>
-              <button type="button" class="btn" disabled>Import JSON</button>
-              <button type="button" class="btn btn-danger" disabled>Reset data</button>
+          <!-- storage status, normal / recovery -->
+          <section class="panel" aria-labelledby="storage-title">
+            <h2 id="storage-title">Saved data</h2>
+            <div id="storage-status"></div>
+            <div id="backup-tools" hidden>
+              <p class="hint">Saved data that could not be read is kept as a backup until you discard it.</p>
+              <div class="button-row">
+                <button type="button" class="btn" data-action="download-backup">Download unreadable data</button>
+                <button type="button" class="btn btn-danger" data-action="discard-backup">Discard backup</button>
+              </div>
             </div>
           </section>
         </div>
+
+        <section class="panel data-panel" aria-labelledby="data-title">
+          <h2 id="data-title">Data management</h2>
+          <div id="data-tools">
+            <div class="data-tool">
+              <h3>Export</h3>
+              <p class="hint">Downloads every request, the audit trail and your preferences as one JSON file.
+                Export before importing or resetting so you can restore what you have now.</p>
+              <button type="button" class="btn" data-action="export-data">Export JSON</button>
+            </div>
+
+            <div class="data-tool" id="import-tool">
+              <h3>Import</h3>
+              <div class="field">
+                <label for="import-file">Choose a LabBorrow JSON file</label>
+                <input type="file" id="import-file" accept=".json,application/json" aria-describedby="hint-import err-import">
+                <p class="hint" id="hint-import">The file is checked first. Nothing changes until you confirm.</p>
+                <p class="hint" id="import-status" role="status"></p>
+                <div class="error" id="err-import"></div>
+              </div>
+              <!-- preview + replace/merge choice + confirm -->
+              <div id="import-preview" class="import-preview" hidden></div>
+            </div>
+
+            <div class="data-tool">
+              <h3>Reset</h3>
+              <p class="hint">Replaces all requests with the original sample data and starts a new audit trail. Preferences are kept.</p>
+              <div class="field">
+                <label for="reset-confirm">Type RESET to confirm</label>
+                <input type="text" id="reset-confirm" autocomplete="off" spellcheck="false" aria-describedby="err-reset">
+                <p class="error" id="err-reset"></p>
+              </div>
+              <button type="button" class="btn btn-danger" data-action="reset-data">Reset data</button>
+            </div>
+          </div>
+          <!-- forbidden state -->
+          <p class="empty-note" id="data-forbidden" hidden>Only the lab head (admin) can export, import or reset data.</p>
+        </section>
+
+        <section class="panel permissions-panel" aria-labelledby="permissions-title">
+          <h2 id="permissions-title">Roles and permissions</h2>
+          <p class="hint">Navigation, buttons and action handlers all read this one table. Roles here are simulated in the
+            browser for demonstration; real authorization requires a trusted back end and is outside the scope of this activity.</p>
+          <div class="table-wrap">
+            <table class="data-table">
+              <caption class="visually-hidden">Permission matrix</caption>
+              <thead id="permission-head"></thead>
+              <tbody id="permission-body"></tbody>
+            </table>
+          </div>
+        </section>
       </section>
     </main>
 
     <footer class="app-footer">
-      <p>DCPET LabBorrow — front-end prototype</p>
+      <p>DCPET LabBorrow · Front-end prototype. Sign-in and roles are simulated; real authorization requires a back end.</p>
     </footer>
   </div>
 
@@ -332,6 +489,11 @@
 
   <script src="js/data.js" defer></script>
   <script src="js/model.js" defer></script>
+  <script src="js/permissions.js" defer></script>
+  <script src="js/workflow.js" defer></script>
+  <script src="js/validation.js" defer></script>
+  <script src="js/storage.js" defer></script>
+  <script src="js/metrics.js" defer></script>
   <script src="js/state.js" defer></script>
   <script src="js/render.js" defer></script>
   <script src="js/app.js" defer></script>

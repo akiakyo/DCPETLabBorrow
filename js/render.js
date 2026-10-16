@@ -6,54 +6,68 @@ function badge(status) {
   return `<span class="badge badge-${status}">${escapeHtml(STATUS_LABELS[status] || status)}</span>`;
 }
 
+function plural(count, word, many = `${word}s`) {
+  return `${count} ${count === 1 ? word : many}`;
+}
+
 /* main render */
 function render() {
   const today = toISODate(new Date());
-  const allDerived = state.records.map(r => deriveRequest(r, today));
-  const visible = getVisibleRecords(state.records, state, today);
 
-  // fix page if results shrank
-  const totalPages = getTotalPages(visible.length, state.pageSize);
-  if (state.page > totalPages) state.page = totalPages;
-
-  // clear selection if record is gone
-  if (state.selectedId && !findById(state.records, state.selectedId)) state.selectedId = null;
-
-  renderSummary(allDerived);
-  renderRecent(allDerived);
-  renderStatusBreakdown(allDerived);
-  renderResultCount(visible.length);
-
-  if (visible.length === 0) {
-    renderEmptyState();
-  } else {
-    renderRecords(selectPage(visible, state.page, state.pageSize));
+  // clear selection if the record is gone or this user may not see it
+  const selected = state.selectedId ? findById(state.records, state.selectedId) : null;
+  if (!selected || !can(state.session, VIEW_PERMS, selected)) {
+    state.selectedId = null;
+    state.pendingAction = null;
   }
-  renderPagination(visible.length);
+
+  // everything below only sees what this user may view
+  const scoped = visibleRecords(state.session, state.records);
+  const allDerived = scoped.map(r => deriveRequest(r, today));
+  const result = getExplorerResult(scoped, state, today);
+  state.page = result.page; // fix page if results shrank
+  const metrics = getMetrics(scoped, state.records, today);
+
+  renderSummary(metrics);
+  renderRecent(allDerived);
+  renderDashboardGroups(metrics);
+  renderResultCount(result);
+  renderRangeError();
+
+  if (result.total === 0) {
+    renderEmptyState(scoped.length);
+  } else {
+    renderRecords(result.items);
+  }
+  renderPagination(result);
   renderDetails(allDerived);
   renderInventory();
+  renderActivity(scoped);
+  renderAudit();
+  renderDataTools();
 }
 
-/* kpi cards
-   total = all records, pending = PENDING,
-   borrowed = BORROWED (incl. overdue), overdue = BORROWED past due,
-   units available = sum of available across inventory */
-function renderSummary(records) {
-  const total = records.length;
-  const pending = records.filter(r => r.status === "PENDING").length;
-  const borrowed = records.filter(r => r.status === "BORROWED");
-  const unitsOut = borrowed.reduce((sum, r) => sum + r.quantity, 0);
-  const overdue = records.filter(r => r.isOverdue).length;
-  const inventory = deriveInventory(state.records);
-  const available = inventory.reduce((sum, i) => sum + i.available, 0);
-  const totalUnits = inventory.reduce((sum, i) => sum + i.totalUnits, 0);
-
+/* kpi cards. every value comes from getMetrics(); formulas are in metrics.js (METRIC_FORMULAS).
+   a rate with nothing to divide by shows "—" and says why, never NaN or 0% */
+function renderSummary(m) {
+  const ownOnly = !can(state.session, "request:view-all");
   const cards = [
-    { label: "Total requests", value: total, note: "All borrow requests on record", tone: "info" },
-    { label: "Pending approval", value: pending, note: pending === 1 ? "1 request awaiting review" : `${pending} requests awaiting review`, tone: pending ? "warning" : "success" },
-    { label: "Currently borrowed", value: borrowed.length, note: `${unitsOut} unit${unitsOut === 1 ? "" : "s"} out of the lab`, tone: "info" },
-    { label: "Overdue", value: overdue, note: overdue ? "Past due date and not yet returned" : "No overdue equipment", tone: overdue ? "danger" : "success" },
-    { label: "Units available", value: `${available}/${totalUnits}`, note: "Across all inventory items", tone: "success" }
+    { label: ownOnly ? "My requests" : "Total requests", value: m.total,
+      note: ownOnly ? "Your borrow requests on record" : "All borrow requests on record", tone: "info" },
+    { label: "Pending approval", value: m.pending,
+      note: `${plural(m.pending, "request")} awaiting review`, tone: m.pending ? "warning" : "success" },
+    { label: "Currently borrowed", value: m.borrowed, note: `${plural(m.unitsOut, "unit")} out of the lab`, tone: "info" },
+    { label: "Overdue", value: m.overdue,
+      note: m.overdue ? "Past due date and not yet returned" : "No overdue equipment", tone: m.overdue ? "danger" : "success" },
+    { label: "Units available", value: `${m.availableUnits}/${m.totalUnits}`,
+      note: `${formatPercent(m.utilization)} of all units approved or on loan`, tone: "success" },
+    { label: "On-time return rate", value: formatPercent(m.onTimeRate),
+      note: m.returned ? `${m.returnedOnTime} of ${plural(m.returned, "return")} on or before the due date` : "No returned requests yet",
+      tone: m.onTimeRate === null ? "info" : m.onTimeRate >= 80 ? "success" : "warning" },
+    { label: "Approval rate", value: formatPercent(m.approvalRate),
+      note: m.reviewed ? `${m.passedReview} of ${plural(m.reviewed, "reviewed request")} approved` : "No requests reviewed yet", tone: "info" },
+    { label: "Average loan length", value: m.avgLoanDays === null ? "—" : `${m.avgLoanDays.toFixed(1)} days`,
+      note: m.returned ? `Borrow to return, over ${plural(m.returned, "returned request")}` : "No returned requests yet", tone: "info" }
   ];
 
   $("#kpi-grid").innerHTML = cards.map(card => `
@@ -79,23 +93,79 @@ function renderRecent(records) {
     </li>`).join("");
 }
 
-function renderStatusBreakdown(records) {
-  const counts = countBy(records, r => r.displayStatus);
-  const order = ["PENDING", "APPROVED", "BORROWED", "OVERDUE", "RETURNED", "REJECTED"];
-  $("#status-list").innerHTML = order.map(status => `
-    <li>${badge(status)} <strong>${counts[status] || 0}</strong></li>`).join("");
+/* grouped summaries as css bars. the bar is decoration (aria-hidden);
+   the count and percentage beside it carry the information */
+const STATUS_TONES = {
+  PENDING: "warning", APPROVED: "info", BORROWED: "info", OVERDUE: "danger",
+  RETURNED: "success", REJECTED: "muted", CANCELLED: "muted"
+};
+
+function renderBars(selector, rows) {
+  $(selector).innerHTML = rows.map(row => `
+    <li class="bar-row">
+      <span class="bar-label">${row.label}</span>
+      <span class="bar-track" aria-hidden="true"><span class="bar-fill" data-tone="${row.tone}" style="width:${(row.width ?? 0).toFixed(1)}%"></span></span>
+      <span class="bar-value">${row.value}</span>
+    </li>`).join("");
+}
+
+function renderDashboardGroups(m) {
+  const share = value => (value === null ? "" : ` <span class="bar-share">· ${formatPercent(value)}</span>`);
+
+  renderBars("#status-bars", m.byStatus.map(row => ({
+    label: badge(row.key),
+    width: row.share,
+    tone: STATUS_TONES[row.key],
+    value: `<strong>${row.count}</strong>${share(row.share)}`
+  })));
+  renderBars("#category-bars", m.byCategory.map(row => ({
+    label: escapeHtml(row.key),
+    width: row.share,
+    tone: "info",
+    value: `<strong>${row.count}</strong>${share(row.share)}`
+  })));
+  renderBars("#lab-bars", m.byLaboratory.map(row => ({
+    label: escapeHtml(row.key),
+    width: row.utilization,
+    tone: row.utilization >= 75 ? "danger" : row.utilization >= 50 ? "warning" : "success",
+    value: `<strong>${row.committed}</strong> of ${row.totalUnits} units${share(row.utilization)}`
+  })));
+
+  $("#status-bars-empty").hidden = m.total > 0;
+  $("#category-bars-empty").hidden = m.total > 0;
+}
+
+// once at start: the formulas do not change at run time
+function renderMetricFormulas() {
+  $("#metric-formulas").innerHTML = METRIC_FORMULAS
+    .map(([name, formula]) => `<dt>${escapeHtml(name)}</dt><dd>${escapeHtml(formula)}</dd>`).join("");
 }
 
 /* record list */
-function renderResultCount(count) {
-  const el = $("#result-count");
-  if (count === 0) {
-    el.textContent = "Showing 0 of 0 matching requests.";
-    return;
+function renderResultCount(result) {
+  $("#result-count").textContent = formatResultCount(result);
+}
+
+function renderRangeError() {
+  const valid = isValidDateRange(state.filters);
+  $("#err-dateRange").textContent = valid ? "" : "“Borrow date from” is later than “Borrow date to”, so the date range is not applied.";
+  ["#filter-from", "#filter-to"].forEach(id => {
+    if (valid) $(id).removeAttribute("aria-invalid");
+    else $(id).setAttribute("aria-invalid", "true");
+  });
+}
+
+// row buttons come from permission checks
+function rowActions(r) {
+  const id = escapeHtml(r.id);
+  const buttons = [`<button type="button" class="btn btn-sm" data-action="view" data-id="${id}" aria-label="View ${id}">View</button>`];
+  if (can(state.session, EDIT_PERMS, r)) {
+    buttons.push(`<button type="button" class="btn btn-sm" data-action="edit" data-id="${id}" aria-label="Edit ${id}">Edit</button>`);
   }
-  const start = (state.page - 1) * state.pageSize + 1;
-  const end = Math.min(state.page * state.pageSize, count);
-  el.textContent = `Showing ${start}–${end} of ${count} matching request${count === 1 ? "" : "s"}.`;
+  if (can(state.session, "request:delete", r)) {
+    buttons.push(`<button type="button" class="btn btn-sm btn-danger" data-action="delete" data-id="${id}" aria-label="Delete ${id}">Delete</button>`);
+  }
+  return buttons.join("");
 }
 
 function renderRecords(pageRecords) {
@@ -116,48 +186,136 @@ function renderRecords(pageRecords) {
       <td data-label="Qty" class="col-optional">${r.quantity}</td>
       <td data-label="Borrow → Due"><div>
         ${formatDate(r.borrowDate)} → ${formatDate(r.dueDate)}
-        <span class="cell-sub">${r.loanDays} day${r.loanDays === 1 ? "" : "s"}${r.isOverdue ? ` · ${r.daysOverdue} day${r.daysOverdue === 1 ? "" : "s"} overdue` : ""}</span>
+        <span class="cell-sub">${plural(r.loanDays, "day")}${r.isOverdue ? ` · ${plural(r.daysOverdue, "day")} overdue` : ""}</span>
       </div></td>
       <td data-label="Status">${badge(r.displayStatus)}</td>
-      <td class="cell-actions">
-        <button type="button" class="btn btn-sm" data-action="view" data-id="${escapeHtml(r.id)}"
-                aria-label="View ${escapeHtml(r.id)}">View</button>
-        <button type="button" class="btn btn-sm btn-danger" data-action="delete" data-id="${escapeHtml(r.id)}"
-                aria-label="Delete ${escapeHtml(r.id)}">Delete</button>
-      </td>
+      <td class="cell-actions">${rowActions(r)}</td>
     </tr>`).join("");
 }
 
-function renderEmptyState() {
+function renderEmptyState(scopeCount = state.records.length) {
   $("#records-body").innerHTML = "";
   $("#table-wrap").hidden = true;
   const box = $("#empty-state");
   box.hidden = false;
 
-  if (state.records.length === 0) {
+  if (scopeCount === 0) {
+    const ownOnly = !can(state.session, "request:view-all");
     box.innerHTML = `
-      <p><strong>There are no borrow requests yet.</strong></p>
+      <p><strong>${ownOnly ? "You have no borrow requests yet." : "There are no borrow requests yet."}</strong></p>
       <p>New requests will appear here once they are submitted.</p>
       <a class="btn btn-primary" href="#new-request">Create a borrow request</a>`;
   } else {
     box.innerHTML = `
       <p><strong>No requests match your search or filters.</strong></p>
-      <p>Try a different keyword, or clear the filters to see all ${state.records.length} requests.</p>
+      <p>Try a different keyword, or clear the filters to see all ${plural(scopeCount, "request")}.</p>
       <button type="button" class="btn btn-primary" data-action="clear-filters">Clear search and filters</button>`;
   }
 }
 
-function renderPagination(count) {
+// previous / numbered pages / next. impossible moves are disabled
+function renderPagination(result) {
   const nav = $("#pagination");
-  if (count === 0) { nav.innerHTML = ""; return; }
-  const totalPages = getTotalPages(count, state.pageSize);
+  if (result.total === 0) { nav.innerHTML = ""; return; }
+  const pages = pageWindow(result.page, result.totalPages).map(p => {
+    if (p === null) return `<li class="page-gap" aria-hidden="true">…</li>`;
+    const current = p === result.page;
+    return `<li><button type="button" class="btn btn-sm" data-action="page-go" data-page="${p}"
+      ${current ? 'aria-current="page"' : ""} aria-label="Page ${p}${current ? ", current page" : ""}">${p}</button></li>`;
+  }).join("");
   nav.innerHTML = `
-    <button type="button" class="btn btn-sm" data-action="page-prev" ${state.page <= 1 ? "disabled" : ""}>← Previous</button>
-    <span>Page ${state.page} of ${totalPages}</span>
-    <button type="button" class="btn btn-sm" data-action="page-next" ${state.page >= totalPages ? "disabled" : ""}>Next →</button>`;
+    <button type="button" class="btn btn-sm" data-action="page-prev" ${result.hasPrev ? "" : "disabled"}>← Previous</button>
+    <ol class="page-list">${pages}</ol>
+    <span class="page-status">Page ${result.page} of ${result.totalPages}</span>
+    <button type="button" class="btn btn-sm" data-action="page-next" ${result.hasNext ? "" : "disabled"}>Next →</button>`;
 }
 
 /* details */
+function renderProgress(r) {
+  const progress = workflowProgress(r);
+  const reached = new Set((r.history || []).map(h => h.to));
+  const stateText = { done: "completed", current: "current stage", todo: "not yet reached", skipped: "not reached" };
+
+  const steps = MAIN_PATH.map((status, i) => {
+    let step;
+    if (progress.linear) step = i < progress.index ? "done" : i === progress.index ? "current" : "todo";
+    else step = reached.has(status) ? "done" : "skipped";
+    return { label: STATUS_LABELS[status], step };
+  });
+  // off the main path: the outcome becomes the last step
+  if (!progress.linear) steps.push({ label: STATUS_LABELS[r.status], step: "current" });
+
+  const summary = progress.linear
+    ? `Stage ${progress.index + 1} of ${progress.final + 1} · ${progress.percent}% of the borrowing path${r.isOverdue ? " · overdue" : ""}`
+    : `Closed as ${STATUS_LABELS[r.status]}. This request left the normal borrowing path, so no percentage is shown.`;
+
+  return `
+    <ol class="stepper">
+      ${steps.map(s => `<li data-step="${s.step}"><span class="step-label">${escapeHtml(s.label)}</span>
+        <span class="step-state">${stateText[s.step]}</span></li>`).join("")}
+    </ol>
+    <p class="hint">${escapeHtml(summary)}</p>`;
+}
+
+function historyChange(entry) {
+  if (!entry.from) return badge(entry.to);
+  return `${badge(entry.from)} <span aria-hidden="true">→</span><span class="visually-hidden">to</span> ${badge(entry.to)}`;
+}
+
+function renderHistory(r) {
+  const entries = [...(r.history || [])].reverse();
+  if (!entries.length) return `<p class="empty-note">No status changes recorded.</p>`;
+  return `
+    <ol class="history-list">
+      ${entries.map(h => `
+        <li>
+          <span class="history-change">${historyChange(h)}</span>
+          <span class="history-meta"><strong>${escapeHtml(h.action)}</strong> by ${escapeHtml(h.actor)} · ${formatDateTime(h.at)}</span>
+          ${h.note ? `<span class="history-note">“${escapeHtml(h.note)}”</span>` : ""}
+        </li>`).join("")}
+    </ol>`;
+}
+
+// only legal next steps, and only those this role has. blocked ones say why
+function renderWorkflowActions(r) {
+  const id = escapeHtml(r.id);
+
+  if (TRANSITIONS[r.status].length === 0) {
+    return `<p class="hint">${escapeHtml(STATUS_LABELS[r.status])} is a final state. No further status changes are possible.</p>`;
+  }
+
+  const pending = state.pendingAction && state.pendingAction.id === r.id ? state.pendingAction.to : null;
+  if (pending) {
+    const action = WORKFLOW_ACTIONS[pending];
+    const required = action.note === "required";
+    return `
+      <form id="action-form" class="action-form" novalidate data-id="${id}" data-to="${pending}">
+        <div class="field">
+          <label for="action-note">${escapeHtml(action.noteLabel)}${required ? " *" : " (optional)"}</label>
+          <textarea id="action-note" name="note" rows="2" maxlength="${NOTE_MAX}" ${required ? "required" : ""}
+                    aria-describedby="err-action-note"></textarea>
+          <p class="error" id="err-action-note"></p>
+        </div>
+        <div class="button-row">
+          <button type="submit" class="btn btn-primary">Confirm: ${escapeHtml(action.label)}</button>
+          <button type="button" class="btn" data-action="cancel-transition">Back</button>
+        </div>
+      </form>`;
+  }
+
+  const actions = availableActions(r, state.session, appContext());
+  if (!actions.length) {
+    return `<p class="hint">Your role (${escapeHtml(ROLE_LABELS[state.session.role])}) has no workflow actions for this request. Lab staff will process it.</p>`;
+  }
+  return `
+    <div class="button-row">
+      ${actions.map(a => `<button type="button" class="btn ${a.tone ? `btn-${a.tone}` : ""}" data-action="transition"
+        data-id="${id}" data-to="${a.to}" ${a.blocked ? `disabled aria-describedby="blocked-${a.to}"` : ""}>${escapeHtml(a.label)}</button>`).join("")}
+    </div>
+    ${actions.filter(a => a.blocked).map(a => `
+      <p class="hint blocked-note" id="blocked-${a.to}"><strong>${escapeHtml(a.label)} is unavailable:</strong> ${escapeHtml(a.blocked)}</p>`).join("")}`;
+}
+
 function renderDetails(records) {
   const panel = $("#request-details");
   const layout = $("#requests-layout");
@@ -181,22 +339,59 @@ function renderDetails(records) {
     ["Purpose", escapeHtml(r.purpose) + (r.purposeDetails ? ` — ${escapeHtml(r.purposeDetails)}` : "")],
     ["Borrow date", formatDate(r.borrowDate)],
     ["Due date", formatDate(r.dueDate)],
-    [`Loan period ${derivedTag}`, `${r.loanDays} day${r.loanDays === 1 ? "" : "s"}`],
+    [`Loan period ${derivedTag}`, plural(r.loanDays, "day")],
     ["Returned", r.returnedDate ? `${formatDate(r.returnedDate)}${r.returnedLate ? " (late)" : ""}` : "Not yet returned"],
     ["Remarks", r.remarks ? escapeHtml(r.remarks) : "—"],
     ["Requested", formatDateTime(r.createdAt)]
   ];
   if (r.isOverdue) rows.splice(13, 0, [`Days overdue ${derivedTag}`, `<strong>${r.daysOverdue}</strong>`]);
+  if (r.updatedAt) rows.push(["Last edited", formatDateTime(r.updatedAt)]);
+
+  // the panel is rebuilt on every render; keep a half-typed note (and its focus) if the same note form comes back
+  const oldForm = $("#action-form");
+  const draft = oldForm && {
+    id: oldForm.dataset.id,
+    to: oldForm.dataset.to,
+    value: oldForm.elements.note.value,
+    focused: document.activeElement === oldForm.elements.note
+  };
+
+  const id = escapeHtml(r.id);
+  const recordButtons = [`<button type="button" class="btn" data-action="close-details">Close details</button>`];
+  if (can(state.session, EDIT_PERMS, r)) {
+    recordButtons.push(`<button type="button" class="btn" data-action="edit" data-id="${id}">Edit request</button>`);
+  }
+  if (can(state.session, "request:delete", r)) {
+    recordButtons.push(`<button type="button" class="btn btn-danger" data-action="delete" data-id="${id}">Delete request</button>`);
+  }
 
   $("#details-body").innerHTML = `
     <dl class="details-list">
       ${rows.map(([label, value]) => `<dt>${label}</dt><dd>${value}</dd>`).join("")}
     </dl>
-    <p class="hint">Workflow actions (approve, release, return) are added in Unit 6.</p>
-    <div class="button-row">
-      <button type="button" class="btn" data-action="close-details">Close details</button>
-      <button type="button" class="btn btn-danger" data-action="delete" data-id="${escapeHtml(r.id)}">Delete request</button>
-    </div>`;
+
+    <section class="details-section" aria-labelledby="progress-title">
+      <h3 id="progress-title">Workflow progress</h3>
+      ${renderProgress(r)}
+    </section>
+
+    <section class="details-section" aria-labelledby="actions-title">
+      <h3 id="actions-title">Next actions</h3>
+      ${renderWorkflowActions(r)}
+    </section>
+
+    <section class="details-section" aria-labelledby="history-title">
+      <h3 id="history-title">Status history</h3>
+      ${renderHistory(r)}
+    </section>
+
+    <div class="button-row">${recordButtons.join("")}</div>`;
+
+  const newForm = $("#action-form");
+  if (draft && newForm && newForm.dataset.id === draft.id && newForm.dataset.to === draft.to) {
+    newForm.elements.note.value = draft.value;
+    if (draft.focused) newForm.elements.note.focus();
+  }
 }
 
 /* inventory */
@@ -221,6 +416,126 @@ function renderInventory() {
   }).join("");
 }
 
+/* activity log: status history of every request this user may see */
+function renderActivity(records) {
+  const entries = collectHistory(records);
+  $("#activity-wrap").hidden = entries.length === 0;
+  $("#activity-empty").hidden = entries.length > 0;
+  $("#activity-body").innerHTML = entries.map(h => `
+    <tr>
+      <td data-label="When">${formatDateTime(h.at)}</td>
+      <td data-label="Request"><button type="button" class="link-button cell-id" data-action="view"
+        data-id="${escapeHtml(h.recordId)}" aria-label="View ${escapeHtml(h.recordId)}">${escapeHtml(h.recordId)}</button></td>
+      <td data-label="Status change"><div>${historyChange(h)}</div></td>
+      <td data-label="Action">${escapeHtml(h.action)}</td>
+      <td data-label="By">${escapeHtml(h.actor)}</td>
+      <td data-label="Note">${h.note ? escapeHtml(h.note) : "—"}</td>
+    </tr>`).join("");
+}
+
+/* audit trail (unit 8), newest first */
+function renderAudit() {
+  const entries = [...state.audit].reverse();
+  $("#audit-wrap").hidden = entries.length === 0;
+  $("#audit-empty").hidden = entries.length > 0;
+  $("#audit-body").innerHTML = entries.map(e => {
+    const record = e.recordId && findById(state.records, e.recordId);
+    const id = escapeHtml(e.recordId || "");
+    const request = !e.recordId ? "—"
+      : record ? `<button type="button" class="link-button cell-id" data-action="view" data-id="${id}" aria-label="View ${id}">${id}</button>`
+      : `<span class="cell-id">${id}</span> <span class="cell-sub">no longer exists</span>`;
+    return `
+      <tr>
+        <td data-label="When">${formatDateTime(e.timestamp)}</td>
+        <td data-label="Action"><span class="audit-tag" data-audit="${escapeHtml(e.action)}">${escapeHtml(AUDIT_LABELS[e.action] || e.action)}</span></td>
+        <td data-label="Request"><div>${request}</div></td>
+        <td data-label="By">${escapeHtml(e.actor)}</td>
+        <td data-label="Details">${escapeHtml(e.details)}</td>
+      </tr>`;
+  }).join("");
+}
+
+/* settings: storage status, backup, import preview (unit 8) */
+function renderStorageStatus() {
+  const s = state.storage;
+  const counts = `${plural(state.records.length, "request")} · ${plural(state.audit.length, "audit entry", "audit entries")}`;
+  let line;
+  if (s.status === "unavailable") {
+    line = `<p class="alert alert-error"><strong>Not saved.</strong> Browser storage is unavailable, so changes are lost when this page closes.</p>`;
+  } else if (s.error) {
+    line = `<p class="alert alert-error"><strong>Last save failed.</strong> ${escapeHtml(s.error)}</p>`;
+  } else {
+    line = `<p><strong>Saved in this browser.</strong> Last saved ${s.lastSavedAt ? formatDateTime(s.lastSavedAt) : "—"}.</p>`;
+  }
+  $("#storage-status").innerHTML = `
+    ${line}
+    <p class="hint">${counts} · storage key <code>${escapeHtml(STORAGE_KEY)}</code>, schema version ${SCHEMA_VERSION}.</p>`;
+  $("#backup-tools").hidden = !(s.hasBackup && can(state.session, "data:manage"));
+}
+
+function renderImportPreview() {
+  const box = $("#import-preview");
+  const p = state.pendingImport;
+  box.hidden = !p;
+  if (!p) { box.innerHTML = ""; return; }
+
+  const d = p.data;
+  const newCount = p.newIds.length;
+  const dupes = p.duplicateIds;
+  const warnings = [...p.warnings, ...p.overcommitted];
+  box.innerHTML = `
+    <h4 id="import-preview-title" tabindex="-1">Check before importing: ${escapeHtml(p.fileName)}</h4>
+    <ul class="import-facts">
+      <li><strong>${plural(d.records.length, "request")}</strong> in the file${d.savedAt ? `, saved ${formatDateTime(d.savedAt)}` : ""}</li>
+      <li>${plural(newCount, "new request")} · ${plural(dupes.length, "request")} with an ID already here${dupes.length ? ` (${escapeHtml(dupes.slice(0, 5).join(", "))}${dupes.length > 5 ? ", …" : ""})` : ""}</li>
+      <li>${plural(d.audit.length, "audit entry", "audit entries")}</li>
+    </ul>
+    ${warnings.length ? `<div class="alert alert-warning"><p><strong>Please note:</strong></p><ul>${warnings.map(w => `<li>${escapeHtml(w)}</li>`).join("")}</ul></div>` : ""}
+    <fieldset class="radio-group import-mode">
+      <legend>How should it be imported?</legend>
+      <label><input type="radio" name="import-mode" value="replace" ${p.mode === "replace" ? "checked" : ""}>
+        Replace: discard the current ${plural(state.records.length, "request")} and audit trail, use the file</label>
+      <label><input type="radio" name="import-mode" value="merge" ${p.mode === "merge" ? "checked" : ""} ${newCount ? "" : "disabled"}>
+        Merge: keep everything here and add the ${plural(newCount, "new request")}${newCount ? "" : " (nothing new to add)"}</label>
+    </fieldset>
+    <div class="button-row">
+      <button type="button" class="btn btn-primary" data-action="confirm-import">Confirm import</button>
+      <button type="button" class="btn" data-action="cancel-import">Cancel</button>
+    </div>`;
+}
+
+function renderDataTools() {
+  renderStorageStatus();
+  renderImportPreview();
+}
+
+/* session: who is signed in, and what that role gets to see */
+function renderNav() {
+  const ownOnly = !can(state.session, "request:view-all");
+  $("#nav-list").innerHTML = navItemsFor(state.session).map(item => `
+    <li><a href="#${item.view}" data-view-link="${item.view}"${item.view === state.view ? ' aria-current="page"' : ""}>${
+      escapeHtml(ownOnly && item.ownLabel ? item.ownLabel : item.label)}</a></li>`).join("");
+}
+
+function renderSession() {
+  const session = state.session;
+  const ownOnly = !can(session, "request:view-all");
+  $("#session-name").textContent = session.displayName;
+  $("#session-role").textContent = ROLE_LABELS[session.role];
+  $("#role-switch").value = session.userId;
+
+  $("#requests-title").textContent = ownOnly ? "My Borrow Requests" : "Borrow Requests";
+  $("#dashboard-lead").textContent = ownOnly
+    ? "Current state of your own borrow requests. Values are computed from the request records."
+    : "Current state of all borrow requests. Values are computed from the request records.";
+
+  const manage = can(session, "data:manage");
+  $("#data-tools").hidden = !manage;
+  $("#data-forbidden").hidden = manage;
+
+  renderNav();
+}
+
 /* option lists from data */
 function renderOptionLists() {
   const categories = [...new Set(EQUIPMENT.map(e => e.category))].sort();
@@ -229,4 +544,24 @@ function renderOptionLists() {
 
   $("#f-equipmentId").insertAdjacentHTML("beforeend",
     EQUIPMENT.map(e => `<option value="${e.id}">${escapeHtml(e.name)} (${escapeHtml(e.laboratory)})</option>`).join(""));
+
+  $("#role-switch").innerHTML = USERS.map(u =>
+    `<option value="${escapeHtml(u.id)}">${escapeHtml(u.name)} — ${escapeHtml(ROLE_LABELS[u.role])}</option>`).join("");
+}
+
+// the matrix on the settings page is printed from the same sets the checks use
+function renderPermissionMatrix() {
+  const roles = Object.keys(ROLE_PERMISSIONS);
+  $("#permission-head").innerHTML = `
+    <tr>
+      <th scope="col">Capability</th>
+      ${roles.map(role => `<th scope="col">${escapeHtml(ROLE_LABELS[role])}</th>`).join("")}
+      <th scope="col">Condition</th>
+    </tr>`;
+  $("#permission-body").innerHTML = Object.entries(PERMISSION_LABELS).map(([permission, label]) => `
+    <tr>
+      <th scope="row" data-label="Capability">${escapeHtml(label.charAt(0).toUpperCase() + label.slice(1))}</th>
+      ${roles.map(role => `<td data-label="${escapeHtml(ROLE_LABELS[role])}">${allowed(role, permission) ? "✓ Yes" : "— No"}</td>`).join("")}
+      <td data-label="Condition">${escapeHtml(PERMISSION_CONDITIONS[permission] || "—")}</td>
+    </tr>`).join("");
 }
