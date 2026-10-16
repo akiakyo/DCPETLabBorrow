@@ -180,12 +180,28 @@
 
         <div class="content-layout" id="requests-layout">
           <div class="records-region">
+            <!-- bulk delete (lab head). the count is the live status of the selection -->
+            <div class="bulk-bar" id="bulk-bar" hidden>
+              <p class="bulk-count" id="bulk-count" role="status"></p>
+              <div class="button-row">
+                <button type="button" class="btn btn-sm" id="bulk-select-page" data-action="select-page">Select all on this page</button>
+                <button type="button" class="btn btn-sm btn-danger" id="bulk-delete" data-action="delete-selected" hidden>Delete selected</button>
+                <button type="button" class="btn btn-sm" id="bulk-clear" data-action="clear-selection" hidden>Clear selection</button>
+              </div>
+            </div>
+
             <!-- normal state -->
             <div class="table-wrap" id="table-wrap">
-              <table class="data-table">
+              <table class="data-table" id="records-table">
                 <caption class="visually-hidden">Borrow requests</caption>
                 <thead>
                   <tr>
+                    <th scope="col" class="col-select">
+                      <label class="select-box">
+                        <input type="checkbox" id="select-page">
+                        <span class="visually-hidden">Select every deletable request on this page</span>
+                      </label>
+                    </th>
                     <th scope="col">Request ID</th>
                     <th scope="col">Borrower</th>
                     <th scope="col">Equipment</th>

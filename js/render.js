@@ -21,6 +21,12 @@ function render() {
     state.pendingAction = null;
   }
 
+  // bulk selection only keeps requests that still exist and this user may still delete
+  state.bulkSelection.forEach(id => {
+    const record = findById(state.records, id);
+    if (!record || !can(state.session, "request:delete", record)) state.bulkSelection.delete(id);
+  });
+
   // everything below only sees what this user may view
   const scoped = visibleRecords(state.session, state.records);
   const allDerived = scoped.map(r => deriveRequest(r, today));
@@ -39,6 +45,7 @@ function render() {
   } else {
     renderRecords(result.items);
   }
+  renderBulkBar(result.items);
   renderPagination(result);
   renderDetails(allDerived);
   renderInventory();
@@ -168,12 +175,30 @@ function rowActions(r) {
   return buttons.join("");
 }
 
+// left column: a box only on rows this user may delete (lab head, closed requests)
+function selectCell(r) {
+  if (!can(state.session, "request:delete", r)) return `<td class="col-select is-empty"></td>`;
+  const id = escapeHtml(r.id);
+  return `
+      <td class="col-select" data-label="Select">
+        <label class="select-box">
+          <input type="checkbox" id="select-${id}" data-select-id="${id}" ${state.bulkSelection.has(r.id) ? "checked" : ""}>
+          <span class="visually-hidden">Select ${id} for deletion</span>
+        </label>
+      </td>`;
+}
+
+function deletableIds(records) {
+  return records.filter(r => can(state.session, "request:delete", r)).map(r => r.id);
+}
+
 function renderRecords(pageRecords) {
   $("#empty-state").hidden = true;
   $("#table-wrap").hidden = false;
 
   $("#records-body").innerHTML = pageRecords.map(r => `
-    <tr class="${r.id === state.selectedId ? "is-selected" : ""}">
+    <tr class="${r.id === state.selectedId ? "is-selected" : ""}${state.bulkSelection.has(r.id) ? " is-checked" : ""}">
+      ${selectCell(r)}
       <td data-label="Request ID" class="cell-id">${escapeHtml(r.id)}</td>
       <td data-label="Borrower"><div>
         ${escapeHtml(r.borrowerName)}
@@ -211,6 +236,35 @@ function renderEmptyState(scopeCount = state.records.length) {
       <p>Try a different keyword, or clear the filters to see all ${plural(scopeCount, "request")}.</p>
       <button type="button" class="btn btn-primary" data-action="clear-filters">Clear search and filters</button>`;
   }
+}
+
+/* bulk delete bar + "select page" box. only for roles that can delete at all.
+   the selection survives paging and filtering, so the count says how many are off this page */
+function renderBulkBar(pageItems) {
+  const enabled = allowed(state.session.role, "request:delete");
+  $("#records-table").classList.toggle("has-select", enabled);
+  $("#bulk-bar").hidden = !enabled;
+  if (!enabled) return;
+
+  const pageIds = deletableIds(pageItems);
+  const count = state.bulkSelection.size;
+  const onPage = pageIds.filter(id => state.bulkSelection.has(id)).length;
+  const offPage = count - onPage;
+  const message = count
+    ? `${plural(count, "request")} selected${offPage ? ` (${offPage} not on this page)` : ""}.`
+    : "Tick closed requests (Returned, Rejected or Cancelled) to delete several at once.";
+  // role=status: only touch the text when it changes, so it is not re-announced on every render
+  if ($("#bulk-count").textContent !== message) $("#bulk-count").textContent = message;
+
+  $("#bulk-delete").hidden = !count;
+  $("#bulk-delete").textContent = `Delete selected (${count})`;
+  $("#bulk-clear").hidden = !count;
+  $("#bulk-select-page").disabled = !pageIds.length || onPage === pageIds.length;
+
+  const box = $("#select-page");
+  box.disabled = !pageIds.length;
+  box.checked = pageIds.length > 0 && onPage === pageIds.length;
+  box.indeterminate = onPage > 0 && onPage < pageIds.length;
 }
 
 // previous / numbered pages / next. impossible moves are disabled

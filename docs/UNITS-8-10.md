@@ -14,7 +14,7 @@ Files added or changed:
 | `js/render.js` | 8 KPI cards, 3 bar summaries, formula list, audit table, storage status, import preview |
 | `js/state.js` | `audit`, `pendingImport`, `storage`; defaults from `DEFAULT_PREFERENCES` |
 | `js/data.js`, `js/model.js` | `seedRecords()`, `SORT_KEYS` |
-| `js/tests.js` | 33 new console tests (`runPersistenceTests()`, `runMetricTests()`); 100 in total |
+| `js/tests.js` | 33 new console tests (`runPersistenceTests()`, `runMetricTests()`); 102 in total, including 2 for bulk delete |
 | `index.html`, `css/styles.css` | Dashboard groups, audit trail, Saved data panel, Export / Import / Reset tools; table no longer scrolls sideways at 1024–1440 px |
 | `docs/screenshots/` | Evidence screenshots from the verification run |
 
@@ -239,7 +239,7 @@ Data: the 17 seed requests on 2026-10-02 (fixed date used by the tests). “Manu
 
 Headless Chrome was driven over the DevTools protocol by a script that clicks, types and presses keys in the real page, reloads it, writes broken data into `localStorage`, and picks files for import. Same steps, same results each run. The run was on 2026-10-16, the real date, so date-dependent results use that day; the console suites use a fixed 2026-10-02.
 
-### 10.4 Functional tests (24)
+### 10.4 Functional tests (27)
 
 | ID | Area | Precondition → action | Expected | Actual | P/F |
 |---|---|---|---|---|---|
@@ -267,8 +267,11 @@ Headless Chrome was driven over the DevTools protocol by a script that clicks, t
 | F-22 | Reset | Type `reset`, then `RESET` | first refused; then 17 sample requests, audit = [RESET], `nextSeq` 19 (no ID reuse) | same | PASS |
 | F-23 | Navigation | 360 px: Menu button | nav hidden → opens → navigates → closes (`aria-expanded`) | same | PASS |
 | F-24 | Workflow + dashboard | Mark 0004 returned (late) | Overdue 6 → 5, on-time 75% → 60%, approval rate unchanged | same | PASS |
+| F-25 | Bulk delete | Lab head: Status Returned → select page → untick 0004 → change filter and page size → Delete selected | 5 ticked, then 4 (header box indeterminate, focus stays on the box); selection kept with “not on this page” count; one confirm deletes the 4; 4 DELETE audit entries “(bulk delete of 4)”; selection cleared; scroll position kept | same | PASS |
+| F-26 | Bulk delete + roles | Switch to staff, then back to lab head | staff: no checkbox column, no bulk bar; lab head: boxes only on Returned/Rejected/Cancelled rows | same | PASS |
+| F-27 | Scroll position | Scroll to the bottom → Next page; scroll Approve far below the details heading → Approve | page stays where it was (moves only if the page got shorter and the browser clamps to the new bottom); request Approved; focus on the panel heading without scrolling to it | same | PASS |
 
-**24 of 24 pass.**
+**27 of 27 pass.**
 
 ### 10.5 Negative / resilience tests (9)
 
@@ -322,7 +325,7 @@ Screenshots: `docs/screenshots/dashboard-{360,768,1024,1440}.png`, `settings-imp
 
 | Check | Result |
 |---|---|
-| Console test suites (V, E, W, P, S, D) | **100 of 100 pass** (21 + 12 + 16 + 18 + 17 + 16), plus the 3 Unit 3 stable-ID assertions |
+| Console test suites (V, E, W, P, S, D) | **102 of 102 pass** (21 + 12 + 16 + 20 + 17 + 16), plus the 3 Unit 3 stable-ID assertions |
 | Uncaught exceptions during the full run | **0** |
 | `console.error` / failed `console.assert` | **0** |
 | `console.warn` | 4, all expected: refused actions (`ForbiddenError`, `WorkflowError`) and the simulated full-storage save |
@@ -344,7 +347,7 @@ Screenshots: `docs/screenshots/dashboard-{360,768,1024,1440}.png`, `settings-imp
 
 | Dimension | Evidence | Passed | Score |
 |---|---|---|---|
-| F — Functionality | §10.4 | 24 / 24 | 100% |
+| F — Functionality | §10.4 | 27 / 27 | 100% |
 | R — Responsiveness | §10.6 | 5 / 5 | 100% |
 | A — Accessibility | §10.7 | 9 / 9 | 100% |
 | V — Validation / resilience | §10.5 | 9 / 9 | 100% |
@@ -378,6 +381,24 @@ The verification table in §9.3 matched the hand count on all 12 metrics.
 
 **3. Rules are enforced in the action functions, not by hiding buttons.**
 With no back end, the UI is the only place rules can live. Hiding a button stops nobody who has DevTools open. Every change therefore goes through one function per action: `saveRequest`, `transitionRequest`, `deleteRecord`, `importData`, `resetData`. Each one checks permission, then legality and guard conditions, then validation, and only then builds new state, writes the audit entry and saves. The buttons are only a convenience view of the same checks (`can()`, `availableActions()`). The tests click tampered buttons and call these functions from the console as the wrong role (F-07, F-13, N-08, S-17, P-18), and in every case the state is unchanged. The cost is that the checks run twice, once to draw a button and once to act, but that is what keeps the console, the UI, the import path and the tests consistent. Real security still needs a server; that limit is stated in the footer and in Settings.
+
+### 10.12 Added after review: bulk delete and scroll position
+
+**Bulk delete.** The request list has a checkbox column on the left for the lab head, the only role that can delete.
+
+- A box appears only on rows that may be deleted (closed requests: Returned, Rejected, Cancelled). The header box selects or clears every deletable row on the current page, and shows a mixed state when only some are ticked.
+- A bar above the table offers *Select all on this page*, *Delete selected (n)* and *Clear selection*. Its count is a `role="status"` live region and says how many ticked requests are on other pages, because the selection is kept across paging, search and filters.
+- `deleteRecords(ids)` in `app.js` is now the only delete function; the single-row delete calls it with one ID. It checks every ID before changing anything, so one open or missing request refuses the whole batch (test P-19). It asks for one confirmation listing the IDs and writes one `DELETE` audit entry per request. An empty batch is refused (P-20).
+- The selection is UI state, not saved. It is cleared on user switch, import and reset, and pruned on every render to requests that still exist and can still be deleted.
+- On phones each box has a 44 px tap target, and rows that cannot be deleted show no empty “Select” line. With the extra column, Qty moves to the details panel below 1280 px, and docked-panel cells use less side padding, so the table still never scrolls sideways (R-360 to R-1440).
+
+**Scroll position.** After an action (approve or other status changes, delete, bulk select, next/previous page, clear filters, closing details, import, reset, saving the form), keyboard focus still moves for screen-reader and keyboard users, but with `focus({ preventScroll: true })` (`focusQuietly()`), so the page stays where the user scrolled it. The page still scrolls in three cases:
+
+- switching to another view opens it at the top
+- opening a request's details scrolls just enough to bring the panel into view if it is off screen
+- a form submitted with errors moves to the error summary, so the problems can be seen
+
+Screenshots: `docs/screenshots/bulk-delete-1280.png`, `bulk-delete-360.png`.
 
 ---
 

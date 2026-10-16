@@ -352,6 +352,23 @@ function runPermissionTests() {
       ["ForbiddenError", true], [liveError, JSON.stringify(state.records) === snapshot]);
   }
 
+  // live bulk delete: the lab head ticks one closed and one open request → the whole batch is refused
+  const closedOne = state.records.find(rec => CLOSED_STATUSES.includes(rec.status));
+  if (open && closedOne) {
+    const savedSession = state.session;
+    const snapshot = JSON.stringify([state.records, state.audit]);
+    let batchError;
+    state.session = sessionFor("F-0017");
+    try {
+      batchError = thrownBy(() => deleteRecords([closedOne.id, open.id]));
+    } finally {
+      state.session = savedSession;
+    }
+    t.check("P-19", `Live: bulk delete of ${closedOne.id} (closed) + ${open.id} (open) by the lab head is refused as a whole; nothing deleted`,
+      ["ForbiddenError", true], [batchError, JSON.stringify([state.records, state.audit]) === snapshot]);
+  }
+  t.check("P-20", "Live: bulk delete with nothing selected is refused", "ValidationError", thrownBy(() => deleteRecords([])));
+
   return t;
 }
 

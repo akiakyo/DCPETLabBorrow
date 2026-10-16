@@ -536,6 +536,8 @@ label:has(input:disabled) { color: var(--text-muted); }
 @media (min-width: 90em) {
   .content-layout.has-details { grid-template-columns: minmax(0, 1fr) minmax(18rem, 22rem); }
   .content-layout.has-details .col-optional { display: none; }
+  .content-layout.has-details .data-table th,
+  .content-layout.has-details .data-table td { padding-inline: var(--space-2); }
   .details-panel { align-self: start; position: sticky; top: var(--space-4); }
 }
 
@@ -577,6 +579,40 @@ label:has(input:disabled) { color: var(--text-muted); }
   .col-optional { display: none; }
 }
 
+/* bulk selection: checkbox column on the left, only for roles that can delete */
+.data-table:not(.has-select) .col-select { display: none; }
+.data-table .col-select { width: 1%; padding-inline: var(--space-2) 0; vertical-align: middle; }
+.select-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2rem;
+  min-height: 2rem;
+  cursor: pointer;
+}
+input[type="checkbox"] { width: 1.15rem; height: 1.15rem; min-height: 0; margin: 0; accent-color: var(--brand); cursor: pointer; }
+input[type="checkbox"]:disabled { cursor: not-allowed; }
+/* ticked for deletion: tinted, and the checked box says it in text to screen readers */
+.data-table tbody tr.is-checked { background: var(--danger-bg); }
+/* the extra column must not make the table scroll: qty moves to the details panel until there is room */
+@media (max-width: 79.99em) {
+  .data-table.has-select .col-optional { display: none; }
+}
+
+.bulk-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-3);
+  background: var(--surface);
+  border: var(--border);
+  border-radius: var(--radius);
+}
+.bulk-count { margin: 0; font-size: var(--text-sm); flex: 1 1 16rem; }
+
 @media (max-width: 47.99em) {
   .table-wrap { background: none; border: 0; overflow: visible; }
   .data-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
@@ -602,7 +638,12 @@ label:has(input:disabled) { color: var(--text-muted); }
     color: var(--text-muted);
   }
   .data-table td .badge { justify-self: start; }
-  .data-table td.col-optional { display: grid; } /* cards have room for qty again */
+  .data-table td.col-optional, .data-table.has-select td.col-optional { display: grid; } /* cards have room for qty again */
+  /* cards: the box gets a full touch target; rows that cannot be deleted show no empty "Select" line */
+  .data-table td.col-select { width: 100%; padding-inline: 0; align-items: center; }
+  .data-table td.col-select.is-empty { display: none; }
+  .select-box { min-width: var(--touch-target); min-height: var(--touch-target); justify-content: flex-start; }
+  .bulk-bar .btn { min-height: var(--touch-target); }
   .data-table td.cell-actions { display: flex; justify-content: flex-start; gap: var(--space-2); border-bottom: 0; }
   .data-table td.cell-actions::before { content: none; }
   .cell-actions .btn { flex: 1; min-height: var(--touch-target); }

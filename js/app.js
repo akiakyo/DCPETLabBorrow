@@ -115,6 +115,12 @@ function showView(name, { moveFocus = true } = {}) {
   }
 }
 
+/* after an action, focus moves for keyboard and screen-reader users, but the page stays
+   where the user scrolled it. only switching views scrolls (to the new view's top) */
+function focusQuietly(element) {
+  element?.focus({ preventScroll: true });
+}
+
 function closeMobileNav() {
   $("#primary-nav").classList.remove("is-open");
   $("#nav-toggle").setAttribute("aria-expanded", "false");
@@ -147,7 +153,10 @@ function handleAction(action, data = {}) {
     case "page-prev": return goToPage(state.page - 1, action);
     case "page-next": return goToPage(state.page + 1, action);
     case "page-go": return goToPage(Number(data.page));
-    case "dismiss-notice": return $(`#${state.view}-title`).focus();
+    case "select-page": return setPageSelection(true);
+    case "delete-selected": return deleteSelected();
+    case "clear-selection": return clearSelection();
+    case "dismiss-notice": return focusQuietly($(`#${state.view}-title`));
     case "export-data": return exportData();
     case "confirm-import": return confirmImport();
     case "cancel-import": return cancelImport();
@@ -174,26 +183,75 @@ function viewRecord(id) {
     pendingFocus = "#details-title";
     location.hash = "#requests";
   } else {
-    $("#details-title").focus();
+    // the panel the user asked for is brought into view only if it is off screen
+    focusQuietly($("#details-title"));
     $("#request-details").scrollIntoView({ block: "nearest" });
   }
 }
 
 function deleteRecord(id) {
-  const record = getRecord(id);
-  requirePermission(state.session, "request:delete", record);
-  if (!confirm(`Delete request ${id} (${record.borrowerName})? This cannot be undone.`)) {
+  return deleteRecords([id]);
+}
+
+/* the only way requests are deleted, one or many. every id is checked before anything changes:
+   one forbidden or missing request refuses the whole batch. one audit entry per request */
+function deleteRecords(ids) {
+  const unique = [...new Set(ids)];
+  if (!unique.length) throw new AppError("ValidationError", "Select at least one request to delete.");
+  const records = unique.map(getRecord);
+  records.forEach(record => requirePermission(state.session, "request:delete", record));
+
+  const question = records.length === 1
+    ? `Delete request ${records[0].id} (${records[0].borrowerName})? This cannot be undone.`
+    : `Delete ${records.length} requests (${unique.join(", ")})? This cannot be undone.`;
+  if (!confirm(question)) {
     announce("Delete cancelled. No changes were made.");
-    return;
+    return [];
   }
-  state.records = deleteById(state.records, id);
-  if (state.selectedId === id) state.selectedId = null;
-  if (state.editingId === id) stopEditing();
-  recordAudit("DELETE", id, `Deleted ${statusWord(record)} request of ${record.borrowerName} for ${deriveRequest(record).equipmentName} × ${record.quantity}.`);
+
+  const gone = new Set(unique);
+  state.records = state.records.filter(r => !gone.has(r.id));
+  if (gone.has(state.selectedId)) state.selectedId = null;
+  if (gone.has(state.editingId)) stopEditing();
+  unique.forEach(id => state.bulkSelection.delete(id));
+  const batch = records.length > 1 ? ` (bulk delete of ${records.length})` : "";
+  records.forEach(record => recordAudit("DELETE", record.id,
+    `Deleted ${statusWord(record)} request of ${record.borrowerName} for ${deriveRequest(record).equipmentName} × ${record.quantity}${batch}.`));
   persist();
   render();
-  $("#requests-title").focus();
-  announce(`Request ${id} was deleted.`, "success");
+  focusQuietly($("#requests-title"));
+  announce(records.length === 1 ? `Request ${unique[0]} was deleted.` : `${records.length} requests were deleted.`, "success");
+  return unique;
+}
+
+// tick or untick every request on the current page that this user may delete
+function setPageSelection(selected) {
+  const { items } = getExplorerResult(visibleRecords(state.session, state.records), state);
+  deletableIds(items).forEach(id => (selected ? state.bulkSelection.add(id) : state.bulkSelection.delete(id)));
+  render();
+}
+
+$("#requests-layout").addEventListener("change", event => {
+  const box = event.target;
+  if (box.matches("[data-select-id]")) {
+    if (box.checked) state.bulkSelection.add(box.dataset.selectId);
+    else state.bulkSelection.delete(box.dataset.selectId);
+    render();
+    focusQuietly($(`#${CSS.escape(box.id)}`)); // the row was redrawn; keep focus on its box
+  } else if (box.id === "select-page") {
+    setPageSelection(box.checked);
+  }
+});
+
+function deleteSelected() {
+  return deleteRecords([...state.bulkSelection]);
+}
+
+function clearSelection() {
+  state.bulkSelection.clear();
+  render();
+  focusQuietly($("#requests-title"));
+  announce("Selection cleared.");
 }
 
 function closeDetails() {
@@ -202,7 +260,7 @@ function closeDetails() {
   state.pendingAction = null;
   render();
   const rowButton = document.querySelector(`#records-body [data-action="view"][data-id="${id}"]`);
-  (rowButton || $("#requests-title")).focus();
+  focusQuietly(rowButton || $("#requests-title"));
 }
 
 /* workflow (unit 6) */
@@ -214,14 +272,14 @@ function startTransition(id, to) {
   state.selectedId = id;
   state.pendingAction = { id, to };
   render();
-  $("#action-note").focus();
+  focusQuietly($("#action-note"));
 }
 
 function cancelTransition() {
   const to = state.pendingAction ? state.pendingAction.to : null;
   state.pendingAction = null;
   render();
-  (document.querySelector(`#details-body [data-action="transition"][data-to="${to}"]`) || $("#details-title")).focus();
+  focusQuietly(document.querySelector(`#details-body [data-action="transition"][data-to="${to}"]`) || $("#details-title"));
 }
 
 // the only way a status changes. illegal or forbidden calls throw and leave state untouched
@@ -235,7 +293,7 @@ function transitionRequest(id, to, note = "") {
     `${STATUS_LABELS[record.status]} → ${STATUS_LABELS[to]} (${WORKFLOW_ACTIONS[to].done})${savedNote ? `: “${savedNote}”` : ""}.`);
   persist();
   render();
-  if (state.selectedId === id && state.view === "requests") $("#details-title").focus();
+  if (state.selectedId === id && state.view === "requests") focusQuietly($("#details-title"));
   announce(`${id}: ${STATUS_LABELS[record.status]} → ${STATUS_LABELS[to]} (${WORKFLOW_ACTIONS[to].done}).`, "success");
   return updated;
 }
@@ -270,7 +328,7 @@ function clearFilters() {
   onSearchInput.cancel();
   updateExplorer({ type: "clear" });
   syncToolbar();
-  $("#search").focus();
+  focusQuietly($("#search"));
   announce("Search and filters cleared.");
 }
 
@@ -280,8 +338,7 @@ function goToPage(page, actionName) {
   updateExplorer({ type: "page", value: page });
   // render replaced the buttons, put focus back on the matching one
   const again = actionName && document.querySelector(`#pagination [data-action="${actionName}"]:not(:disabled)`);
-  (again || document.querySelector('#pagination [aria-current="page"]'))?.focus();
-  $("#result-count").scrollIntoView({ block: "nearest" });
+  focusQuietly(again || document.querySelector('#pagination [aria-current="page"]'));
 }
 
 // one listener for every [data-action], even new rows
@@ -553,7 +610,7 @@ form.addEventListener("submit", event => {
   success.innerHTML = `Request <strong>${id}</strong> ${editingId ? "was updated." : "was submitted and is pending approval."}
     <button type="button" class="btn btn-sm" data-action="view" data-id="${id}">View request</button>`;
   success.hidden = false;
-  $("#new-request-title").focus();
+  focusQuietly($("#new-request-title")); // the toast confirms it where the user is
   announce(editingId ? `Request ${record.id} updated.` : `Request ${record.id} submitted.`, "success");
 });
 
@@ -564,6 +621,7 @@ function switchUser(userId) {
   state.selectedId = null;
   state.pendingAction = null;
   state.pendingImport = null;
+  state.bulkSelection.clear();
   state.page = 1;
   stopEditing(); // the form belongs to the previous user
   persist(); // the active demo user is restored after a refresh
@@ -698,6 +756,7 @@ function importData(payload, mode = "replace", fileName = "import.json") {
   // ids only go up, so an id this browser already handed out is never reused
   state.nextSeq = Math.max(state.nextSeq, incoming.nextSeq, nextSequenceFrom(state.records));
   state.pendingImport = null;
+  state.bulkSelection.clear();
   state.selectedId = null;
   state.pendingAction = null;
   if (state.editingId) stopEditing();
@@ -712,14 +771,14 @@ function confirmImport() {
   const pending = state.pendingImport;
   if (!pending) throw new AppError("NotFoundError", "There is no checked file to import. Choose a file first.");
   const details = importData(pending.payload, pending.mode, pending.fileName);
-  $("#data-title").focus();
+  focusQuietly($("#data-title"));
   announce(details, "success");
 }
 
 function cancelImport() {
   state.pendingImport = null;
   render();
-  $("#import-file").focus();
+  focusQuietly($("#import-file"));
   announce("Import cancelled. No changes were made.");
 }
 
@@ -734,6 +793,7 @@ function resetData(phrase) {
   state.nextSeq = Math.max(state.nextSeq, nextSequenceFrom(SEED_REQUESTS));
   state.audit = [];
   state.pendingImport = null;
+  state.bulkSelection.clear();
   state.selectedId = null;
   state.pendingAction = null;
   if (state.editingId) stopEditing();
@@ -751,7 +811,7 @@ function resetFromForm() {
   try {
     const details = resetData(input.value);
     input.value = "";
-    $("#data-title").focus();
+    focusQuietly($("#data-title"));
     announce(details, "success");
   } catch (error) {
     if (error.name !== "ValidationError") throw error;
@@ -779,7 +839,7 @@ function discardBackup() {
   clearBackup();
   state.storage.hasBackup = false;
   renderStorageStatus();
-  $("#storage-title").focus();
+  focusQuietly($("#storage-title"));
   announce("Backup discarded.", "success");
 }
 
@@ -791,7 +851,7 @@ $("#import-file").addEventListener("change", async event => {
   if (!file) return;
   try {
     await previewImportFile(file);
-    $("#import-preview-title").focus();
+    focusQuietly($("#import-preview-title"));
     announce(`${file.name} checked. Choose replace or merge, then confirm.`);
   } catch (error) {
     if (error.name !== "ValidationError") { reportError(error); return; }

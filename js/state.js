@@ -22,6 +22,7 @@ const state = {
   page: 1,
   pageSize: DEFAULT_PREFERENCES.pageSize,
   selectedId: null,
+  bulkSelection: new Set(), // ids ticked for bulk delete; kept across pages, not saved
   editingId: null,      // request loaded in the form
   pendingAction: null,  // { id, to } while a workflow note is being typed
   pendingImport: null,  // checked file waiting for confirm (unit 8)
