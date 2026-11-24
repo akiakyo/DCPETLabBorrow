@@ -109,6 +109,18 @@ Tables: `users`, `equipment`, `borrow_requests`, `activity_log`. Foreign keys li
 | `database/labborrow_db.sql` | Full structure and demo records |
 | `index.html`, `css/styles.css`, `js/*.js` (except `site.js`), `docs/UNITS-*.md`, `docs/screenshots/` | Earlier front-end prototype (Units 1–10, browser storage only). Open `index.html` directly to see it. |
 
+## Screenshots
+
+Every screen, for each role, in light and dark mode at desktop (1280px) and phone (390px) widths, is in [`docs/screenshots/system/`](docs/screenshots/system/).
+
+| Sign in | Admin dashboard | Borrow requests |
+|---|---|---|
+| ![Sign in](docs/screenshots/system/01-login-light-1280.png) | ![Admin dashboard](docs/screenshots/system/04-dashboard-admin-light-1280.png) | ![Borrow requests](docs/screenshots/system/06-requests-admin-light-1280.png) |
+
+| Equipment (Super Admin) | Access denied (User) | Phone, dark mode |
+|---|---|---|
+| ![Equipment](docs/screenshots/system/15-equipment-super-admin-light-1280.png) | ![Access denied](docs/screenshots/system/26-access-denied-user-on-users-light-1280.png) | ![Phone dashboard](docs/screenshots/system/05-dashboard-user-dark-390.png) |
+
 ## Design
 
 The interface is a minimal single column. Sections are separated by spacing and 1px lines rather than boxes and shadows. It follows the system light or dark setting.
