@@ -61,5 +61,5 @@
 
 /* access denied */
 .denied { text-align: center; padding: var(--space-7) var(--space-4); }
-.denied .icon { width: 48px; height: 48px; color: var(--danger); margin-bottom: var(--space-4); }
+.denied > .icon { width: 48px; height: 48px; color: var(--danger); margin-bottom: var(--space-4); }
 .denied .page-lead { margin: var(--space-2) auto var(--space-5); }
