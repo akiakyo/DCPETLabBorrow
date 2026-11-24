@@ -107,7 +107,7 @@ Tables: `users`, `equipment`, `borrow_requests`, `activity_log`. Foreign keys li
 | `includes/icons.php`, `img/logo.svg` | Solar line icons and the LabBorrow logo (a flask inside a return arrow) |
 | `js/site.js` | Mobile menu, in-app confirm dialog, filters that apply on change, form helpers |
 | `database/labborrow_db.sql` | Full structure and demo records |
-| `index.html`, `css/styles.css`, `js/*.js` (except `site.js`), `docs/UNITS-1-3.md` | Earlier front-end prototype (Units 1–3) |
+| `index.html`, `css/styles.css`, `js/*.js` (except `site.js`), `docs/UNITS-*.md`, `docs/screenshots/` | Earlier front-end prototype (Units 1–10, browser storage only). Open `index.html` directly to see it. |
 
 ## Design
 
