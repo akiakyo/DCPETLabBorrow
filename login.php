@@ -22,14 +22,24 @@ if (is_post()) {
     }
 }
 
+$demo = [
+    ['Super Admin', 'superadmin@school.edu.ph'],
+    ['Admin (Lab Staff)', 'admin@school.edu.ph'],
+    ['User · Student', 'asantos@school.edu.ph'],
+    ['User · Faculty', 'lramos@school.edu.ph'],
+];
+
 $page_title = 'Sign In';
 require __DIR__ . '/includes/layout/header.php';
 ?>
-<section class="auth-card" aria-labelledby="login-title">
-  <h1 id="login-title" class="view-title">Sign in</h1>
-  <p class="view-lead">Use your school email or ID number.</p>
+<section class="auth" aria-labelledby="login-title">
+  <div class="auth-head">
+    <?= logo_mark() ?>
+    <h1 id="login-title" class="page-title">Sign in to LabBorrow</h1>
+    <p class="page-lead">Borrow lab equipment and track what you have out.</p>
+  </div>
 
-  <form method="post" class="form-stack" novalidate>
+  <form method="post" class="stack" novalidate>
     <?= csrf_field() ?>
     <div class="field">
       <label for="login">Email or ID number</label>
@@ -42,23 +52,19 @@ require __DIR__ . '/includes/layout/header.php';
              <?= $error ? 'aria-invalid="true" aria-describedby="login-error"' : '' ?>>
       <p class="error" id="login-error"><?= e($error ?? '') ?></p>
     </div>
-    <button type="submit" class="btn btn-primary btn-block">Sign In</button>
+    <button type="submit" class="btn btn-primary btn-block"><?= icon('login') ?>Sign In</button>
   </form>
 
   <p class="auth-switch">New student or faculty? <a href="register.php">Create an account</a></p>
 
-  <details class="demo-accounts">
-    <summary>Demo accounts</summary>
-    <table class="mini-table">
-      <thead><tr><th scope="col">Role</th><th scope="col">Email</th></tr></thead>
-      <tbody>
-        <tr><td>Super Admin</td><td>superadmin@school.edu.ph</td></tr>
-        <tr><td>Admin (Lab Staff)</td><td>admin@school.edu.ph</td></tr>
-        <tr><td>User (Student)</td><td>asantos@school.edu.ph</td></tr>
-        <tr><td>User (Faculty)</td><td>lramos@school.edu.ph</td></tr>
-      </tbody>
-    </table>
-    <p class="hint">Password for all demo accounts: <code>password123</code></p>
+  <details class="demo">
+    <summary><?= icon('info') ?>Demo accounts</summary>
+    <ul class="demo-list">
+      <?php foreach ($demo as [$role, $email]): ?>
+        <li><span class="muted"><?= e($role) ?></span><button type="button" data-fill="<?= e($email) ?>"><?= e($email) ?></button></li>
+      <?php endforeach; ?>
+    </ul>
+    <p class="hint">Tap an email to fill it in. Password for all: <code>password123</code></p>
   </details>
 </section>
 <?php require __DIR__ . '/includes/layout/footer.php'; ?>

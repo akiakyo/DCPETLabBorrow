@@ -59,9 +59,10 @@ function forbid(): void
     http_response_code(403);
     $page_title = 'Access denied';
     require __DIR__ . '/layout/header.php';
-    echo '<h1 class="view-title">Access denied</h1>'
-        . '<div class="alert alert-error"><p>Your role (' . e(ROLE_LABELS[current_user()['role']]) . ') can’t open this page or do this action.</p>'
-        . '<p style="margin:0"><a href="dashboard.php">Back to the dashboard</a></p></div>';
+    echo '<div class="denied">' . icon('lock')
+        . '<h1 class="page-title">Access denied</h1>'
+        . '<p class="page-lead">Your role, ' . e(ROLE_LABELS[current_user()['role']]) . ', can’t open this page or do this action.</p>'
+        . '<a class="btn btn-primary" href="dashboard.php">' . icon('dashboard') . 'Back to Dashboard</a></div>';
     require __DIR__ . '/layout/footer.php';
     exit;
 }

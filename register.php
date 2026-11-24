@@ -32,11 +32,14 @@ if (is_post()) {
 $page_title = 'Create Account';
 require __DIR__ . '/includes/layout/header.php';
 ?>
-<section class="auth-card" aria-labelledby="register-title">
-  <h1 id="register-title" class="view-title">Create an account</h1>
-  <p class="view-lead">For students and faculty who borrow lab equipment. Lab staff accounts are made by the Super Admin.</p>
+<section class="auth" aria-labelledby="register-title">
+  <div class="auth-head">
+    <?= logo_mark() ?>
+    <h1 id="register-title" class="page-title">Create an account</h1>
+    <p class="page-lead">For students and faculty who borrow lab equipment. Lab staff accounts are made by the Super Admin.</p>
+  </div>
 
-  <form method="post" class="form-stack" novalidate>
+  <form method="post" class="stack" novalidate>
     <?= csrf_field() ?>
     <div class="field">
       <label for="school_id">ID number</label>
@@ -71,7 +74,7 @@ require __DIR__ . '/includes/layout/header.php';
       <input id="password_confirm" name="password_confirm" type="password" autocomplete="new-password"<?= invalid_attr($errors, 'password_confirm') ?>>
       <?= field_error($errors, 'password_confirm') ?>
     </div>
-    <button type="submit" class="btn btn-primary btn-block">Create Account</button>
+    <button type="submit" class="btn btn-primary btn-block"><?= icon('user-plus') ?>Create Account</button>
   </form>
   <p class="auth-switch">Already have an account? <a href="login.php">Sign in</a></p>
 </section>

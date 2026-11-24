@@ -31,67 +31,90 @@ $page_title = 'Dashboard';
 $active_nav = 'dashboard';
 require __DIR__ . '/includes/layout/header.php';
 ?>
-<h1 class="view-title">Dashboard</h1>
-<p class="view-lead">
-  <?= $all
-      ? 'Live numbers for every borrow request and item, read from the database.'
-      : 'Hi, ' . e(explode(' ', $me['full_name'])[0]) . '. Here are your borrow requests at a glance.' ?>
-</p>
-
-<div class="kpi-grid">
-  <div class="kpi-card"><p class="kpi-label"><?= $all ? 'All requests' : 'My requests' ?></p><p class="kpi-value"><?= $counts['total'] ?></p><p class="kpi-note"><?= $counts['returned'] ?> returned</p></div>
-  <div class="kpi-card" data-tone="warning"><p class="kpi-label">Pending approval</p><p class="kpi-value"><?= $counts['pending'] ?></p><p class="kpi-note"><?= $counts['approved'] ?> approved, waiting for pickup</p></div>
-  <div class="kpi-card"><p class="kpi-label">Borrowed now</p><p class="kpi-value"><?= $counts['borrowed'] ?></p><p class="kpi-note">Within the due date</p></div>
-  <div class="kpi-card" data-tone="danger"><p class="kpi-label">Overdue</p><p class="kpi-value"><?= $counts['overdue'] ?></p><p class="kpi-note">Past the due date</p></div>
-  <div class="kpi-card" data-tone="success"><p class="kpi-label">Units available</p><p class="kpi-value"><?= max(0, $totalUnits - $committed) ?></p><p class="kpi-note">of <?= $totalUnits ?> units in the labs</p></div>
+<div class="page-head">
+  <div>
+    <h1 class="page-title"><?= $all ? 'Dashboard' : 'Hi, ' . e(explode(' ', $me['full_name'])[0]) ?></h1>
+    <p class="page-lead"><?= $all ? 'Live numbers for every request and item, read from the database.' : 'Here are your borrow requests at a glance.' ?></p>
+  </div>
+  <a class="btn btn-primary" href="requests.php?action=new"><?= icon('new') ?>New Request</a>
 </div>
 
-<div class="dashboard-grid">
-  <section class="panel" aria-labelledby="recent-title">
-    <h2 id="recent-title">Recent requests</h2>
-    <?php if (!$recent): ?>
-      <p class="empty-note">No borrow requests yet. <a href="requests.php?action=new">Make your first request</a>.</p>
-    <?php else: ?>
-      <ul class="recent-list">
-        <?php foreach ($recent as $r): ?>
-          <li>
-            <a class="recent-link" href="requests.php?action=view&amp;id=<?= (int) $r['id'] ?>">
-              <span><span class="recent-title"><?= e($r['equipment_name']) ?></span>
-                <span class="recent-meta"><?= e($r['code']) ?><?= $all ? ' · ' . e($r['borrower_name']) : '' ?></span></span>
-              <?= badge($r['display_status']) ?>
-            </a>
-          </li>
-        <?php endforeach; ?>
-      </ul>
-    <?php endif; ?>
-  </section>
+<div class="stats">
+  <div class="stat">
+    <p class="stat-label"><?= icon('requests') ?><?= $all ? 'All requests' : 'My requests' ?></p>
+    <p class="stat-value"><?= $counts['total'] ?></p>
+    <p class="stat-note"><?= $counts['returned'] ?> returned</p>
+  </div>
+  <div class="stat" data-tone="warning">
+    <p class="stat-label"><?= icon('clock') ?>Pending</p>
+    <p class="stat-value"><?= $counts['pending'] ?></p>
+    <p class="stat-note"><?= $counts['approved'] ?> approved, not picked up</p>
+  </div>
+  <div class="stat">
+    <p class="stat-label"><?= icon('release') ?>Borrowed</p>
+    <p class="stat-value"><?= $counts['borrowed'] ?></p>
+    <p class="stat-note">Within the due date</p>
+  </div>
+  <div class="stat"<?= $counts['overdue'] ? ' data-tone="danger"' : '' ?>>
+    <p class="stat-label"><?= icon('danger') ?>Overdue</p>
+    <p class="stat-value"><?= $counts['overdue'] ?></p>
+    <p class="stat-note">Past the due date</p>
+  </div>
+  <div class="stat">
+    <p class="stat-label"><?= icon('equipment') ?>Units free</p>
+    <p class="stat-value"><?= max(0, $totalUnits - $committed) ?></p>
+    <p class="stat-note">of <?= $totalUnits ?> in the labs</p>
+  </div>
+</div>
 
-  <section class="panel" aria-labelledby="overdue-title">
-    <h2 id="overdue-title">Overdue items</h2>
-    <?php if (!$overdueList): ?>
-      <p class="empty-note">Nothing is overdue.</p>
-    <?php else: ?>
-      <ul class="recent-list">
-        <?php foreach ($overdueList as $r): ?>
-          <li>
-            <a class="recent-link" href="requests.php?action=view&amp;id=<?= (int) $r['id'] ?>">
-              <span><span class="recent-title"><?= e($r['equipment_name']) ?></span>
-                <span class="recent-meta"><?= e($r['borrower_name']) ?> · due <?= fmt_date($r['due_date']) ?></span></span>
-              <span class="badge badge-OVERDUE"><?= (int) $r['days_overdue'] ?> day<?= $r['days_overdue'] == 1 ? '' : 's' ?> late</span>
-            </a>
-          </li>
-        <?php endforeach; ?>
-      </ul>
-    <?php endif; ?>
-  </section>
+<section class="section" aria-labelledby="status-title">
+  <h2 id="status-title" class="section-title">By status</h2>
+  <div class="status-row">
+    <?php foreach (['pending' => 'PENDING', 'approved' => 'APPROVED', 'borrowed' => 'BORROWED', 'overdue' => 'OVERDUE', 'returned' => 'RETURNED', 'rejected' => 'REJECTED'] as $k => $s): ?>
+      <a class="status-chip" href="requests.php?status=<?= $s ?>"><?= badge($s) ?><?= $counts[$k] ?></a>
+    <?php endforeach; ?>
+  </div>
+</section>
 
-  <section class="panel" aria-labelledby="status-title">
-    <h2 id="status-title">Requests by status</h2>
-    <ul class="status-list">
-      <?php foreach (['pending' => 'PENDING', 'approved' => 'APPROVED', 'borrowed' => 'BORROWED', 'overdue' => 'OVERDUE', 'returned' => 'RETURNED', 'rejected' => 'REJECTED'] as $k => $s): ?>
-        <li><a href="requests.php?status=<?= $s ?>"><?= badge($s) ?></a><strong><?= $counts[$k] ?></strong></li>
+<?php if ($overdueList): ?>
+<section class="section" aria-labelledby="overdue-title">
+  <h2 id="overdue-title" class="section-title">Overdue</h2>
+  <ul class="rows">
+    <?php foreach ($overdueList as $r): ?>
+      <li>
+        <a class="row-link" href="requests.php?action=view&amp;id=<?= (int) $r['id'] ?>">
+          <span class="row-main"><span class="row-title"><?= e($r['equipment_name']) ?></span>
+            <span class="sub"><?= e($r['borrower_name']) ?> · due <?= fmt_date($r['due_date']) ?></span></span>
+          <span class="badge badge-OVERDUE"><?= (int) $r['days_overdue'] ?> day<?= $r['days_overdue'] == 1 ? '' : 's' ?> late</span>
+          <?= icon('next', 'chev') ?>
+        </a>
+      </li>
+    <?php endforeach; ?>
+  </ul>
+</section>
+<?php endif; ?>
+
+<section class="section" aria-labelledby="recent-title">
+  <h2 id="recent-title" class="section-title">Recent requests</h2>
+  <?php if (!$recent): ?>
+    <div class="empty">
+      <?= icon('inbox') ?>
+      <p><strong>No borrow requests yet.</strong></p>
+      <a class="btn btn-primary" href="requests.php?action=new"><?= icon('new') ?>New Request</a>
+    </div>
+  <?php else: ?>
+    <ul class="rows">
+      <?php foreach ($recent as $r): ?>
+        <li>
+          <a class="row-link" href="requests.php?action=view&amp;id=<?= (int) $r['id'] ?>">
+            <span class="row-main"><span class="row-title"><?= e($r['equipment_name']) ?></span>
+              <span class="sub"><?= e($r['code']) ?><?= $all ? ' · ' . e($r['borrower_name']) : '' ?> · <?= fmt_date($r['borrow_date']) ?></span></span>
+            <?= badge($r['display_status']) ?>
+            <?= icon('next', 'chev') ?>
+          </a>
+        </li>
       <?php endforeach; ?>
     </ul>
-  </section>
-</div>
+  <?php endif; ?>
+</section>
 <?php require __DIR__ . '/includes/layout/footer.php'; ?>

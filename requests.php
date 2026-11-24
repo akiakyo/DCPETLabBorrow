@@ -211,23 +211,29 @@ if ($action === 'new' || $action === 'edit') {
     $err = fn($k) => '<p class="error" id="' . $k . '-error">' . e($errors[$k] ?? '') . '</p>';
     $inv = fn($k) => isset($errors[$k]) ? ' aria-invalid="true" aria-describedby="' . $k . '-error"' : '';
     ?>
-    <h1 class="view-title"><?= $isEdit ? 'Edit ' . e($form['code'] ?? 'request') : 'New borrow request' ?></h1>
-    <p class="view-lead">
-      <?= can('requests.create_for_others') ? 'Lab staff can file a request for any borrower.' : 'Your request goes to the lab staff for approval.' ?>
-      Loans run up to <?= MAX_LOAN_DAYS ?> days.
-    </p>
+    <a class="back-link" href="<?= $isEdit ? 'requests.php?action=view&amp;id=' . (int) $form['id'] : 'requests.php' ?>"><?= icon('back') ?><?= $isEdit ? 'Back to request' : 'All requests' ?></a>
+    <div class="page-head">
+      <div>
+        <h1 class="page-title"><?= $isEdit ? 'Edit ' . e($form['code'] ?? 'request') : 'New borrow request' ?></h1>
+        <p class="page-lead">
+          <?= can('requests.create_for_others') ? 'Lab staff can file a request for any borrower.' : 'Lab staff will review your request.' ?>
+          Loans run up to <?= MAX_LOAN_DAYS ?> days.
+        </p>
+      </div>
+    </div>
 
     <?php if ($errors): ?>
-      <div class="alert alert-error" role="alert"><p style="margin:0">Please fix the <?= count($errors) ?> highlighted field<?= count($errors) > 1 ? 's' : '' ?> below.</p></div>
+      <div class="flash flash-error" role="alert"><?= icon('danger') ?><p>Please fix the <?= count($errors) ?> highlighted field<?= count($errors) > 1 ? 's' : '' ?> below.</p></div>
     <?php endif; ?>
 
-    <form method="post" action="requests.php" class="form-grid" novalidate>
+    <form method="post" action="requests.php" class="form" novalidate>
       <?= csrf_field() ?>
       <input type="hidden" name="action" value="save">
       <input type="hidden" name="id" value="<?= (int) $form['id'] ?>">
 
-      <fieldset>
+      <fieldset class="form-section">
         <legend>Borrower</legend>
+        <div class="form-fields">
         <?php if (can('requests.create_for_others')): ?>
           <div class="field field-wide">
             <label for="user_id">Borrower</label>
@@ -239,12 +245,14 @@ if ($action === 'new' || $action === 'edit') {
             <?= $err('user_id') ?>
           </div>
         <?php else: ?>
-          <p class="field-wide" style="margin:0"><strong><?= e($me['full_name']) ?></strong> <span class="cell-sub"><?= e($me['school_id'] . ' · ' . $me['borrower_type']) ?></span></p>
+          <p class="field-wide"><strong><?= e($me['full_name']) ?></strong> <span class="sub"><?= e($me['school_id'] . ' · ' . $me['borrower_type']) ?></span></p>
         <?php endif; ?>
+      </div>
       </fieldset>
 
-      <fieldset>
+      <fieldset class="form-section">
         <legend>Equipment</legend>
+        <div class="form-fields">
         <div class="field field-wide">
           <label for="equipment_id">Item</label>
           <select id="equipment_id" name="equipment_id"<?= $inv('equipment_id') ?>>
@@ -262,10 +270,12 @@ if ($action === 'new' || $action === 'edit') {
           <input id="quantity" name="quantity" type="number" min="1" inputmode="numeric" value="<?= e($form['quantity']) ?>"<?= $inv('quantity') ?>>
           <?= $err('quantity') ?>
         </div>
+      </div>
       </fieldset>
 
-      <fieldset>
+      <fieldset class="form-section">
         <legend>Purpose and dates</legend>
+        <div class="form-fields">
         <div class="field">
           <label for="purpose">Purpose</label>
           <select id="purpose" name="purpose"<?= $inv('purpose') ?>>
@@ -293,16 +303,17 @@ if ($action === 'new' || $action === 'edit') {
         </div>
         <?php if (can('requests.update_any')): ?>
           <div class="field field-wide">
-            <label for="remarks">Staff remarks (optional)</label>
+            <label for="remarks">Staff remarks <span class="optional">(optional)</span></label>
             <textarea id="remarks" name="remarks" rows="2" maxlength="255"<?= $inv('remarks') ?>><?= e($form['remarks']) ?></textarea>
             <?= $err('remarks') ?>
           </div>
         <?php endif; ?>
+      </div>
       </fieldset>
 
       <div class="form-actions">
-        <button type="submit" class="btn btn-primary"><?= $isEdit ? 'Save Changes' : 'Submit Request' ?></button>
-        <a class="btn" href="<?= $isEdit ? 'requests.php?action=view&amp;id=' . (int) $form['id'] : 'requests.php' ?>">Cancel</a>
+        <a class="btn btn-tertiary" href="<?= $isEdit ? 'requests.php?action=view&amp;id=' . (int) $form['id'] : 'requests.php' ?>">Cancel</a>
+        <button type="submit" class="btn btn-primary"><?= icon('check') ?><?= $isEdit ? 'Save Changes' : 'Submit Request' ?></button>
       </div>
     </form>
     <?php
@@ -316,62 +327,63 @@ if ($action === 'view') {
     $page_title = $r['code'];
     require __DIR__ . '/includes/layout/header.php';
     ?>
-    <p class="back-link"><a href="requests.php">← All requests</a></p>
-    <h1 class="view-title"><?= e($r['code']) ?> <?= badge($r['display_status']) ?></h1>
-
-    <section class="panel" aria-label="Request details">
-      <dl class="details-list">
-        <dt>Borrower</dt><dd><?= e($r['borrower_name']) ?> <span class="cell-sub"><?= e($r['borrower_school_id'] . ' · ' . $r['borrower_type'] . ' · ' . $r['borrower_email']) ?></span></dd>
-        <dt>Item</dt><dd><?= e($r['equipment_name']) ?> <span class="cell-sub"><?= e($r['equipment_code'] . ' · ' . $r['category'] . ' · ' . $r['laboratory']) ?></span></dd>
-        <dt>Quantity</dt><dd><?= (int) $r['quantity'] ?></dd>
-        <dt>Purpose</dt><dd><?= e($r['purpose']) ?><?= $r['purpose_details'] ? ' — ' . e($r['purpose_details']) : '' ?></dd>
-        <dt>Borrow date</dt><dd><?= fmt_date($r['borrow_date']) ?></dd>
-        <dt>Due date</dt><dd><?= fmt_date($r['due_date']) ?> <span class="cell-sub"><?= (int) $r['loan_days'] ?>-day loan<?= $r['days_overdue'] ? ' · <strong class="text-danger">' . (int) $r['days_overdue'] . ' days overdue</strong>' : '' ?></span></dd>
-        <dt>Returned</dt><dd><?= fmt_date($r['returned_date']) ?><?= $r['returned_date'] && $r['returned_date'] > $r['due_date'] ? ' <span class="cell-sub">Returned late</span>' : '' ?></dd>
-        <dt>Remarks</dt><dd><?= e($r['remarks'] ?: '—') ?></dd>
-        <dt>Filed by</dt><dd><?= e($r['created_by_name'] ?? '—') ?> <span class="cell-sub"><?= fmt_datetime($r['created_at']) ?></span></dd>
-        <dt>Handled by</dt><dd><?= e($r['processed_by_name'] ?? '—') ?></dd>
-        <dt>Last change</dt><dd><?= fmt_datetime($r['updated_at']) ?></dd>
-      </dl>
-
+    <a class="back-link" href="requests.php"><?= icon('back') ?>All requests</a>
+    <div class="page-head">
+      <div>
+        <h1 class="page-title"><?= e($r['equipment_name']) ?></h1>
+        <p class="page-lead"><span class="mono"><?= e($r['code']) ?></span> · <?= badge($r['display_status']) ?></p>
+      </div>
       <div class="button-row">
         <?php if (can_edit_request($r)): ?>
-          <a class="btn" href="requests.php?action=edit&amp;id=<?= (int) $r['id'] ?>">Edit</a>
+          <a class="btn" href="requests.php?action=edit&amp;id=<?= (int) $r['id'] ?>"><?= icon('edit') ?>Edit</a>
         <?php endif; ?>
         <?php if (can_delete_request($r)): ?>
-          <form method="post" action="requests.php" data-confirm="Delete <?= e($r['code']) ?>? This removes it from the database and can’t be undone." data-confirm-label="Delete">
+          <?php $label = owns($r) && !can('requests.delete_any') ? 'Cancel Request' : 'Delete'; ?>
+          <form method="post" action="requests.php" class="inline-form" data-confirm="<?= e($r['code']) ?> will be removed from the database. This can’t be undone." data-confirm-title="<?= e($label) ?>?" data-confirm-label="<?= e($label) ?>">
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="delete">
             <input type="hidden" name="id" value="<?= (int) $r['id'] ?>">
-            <button type="submit" class="btn btn-danger"><?= owns($r) && !can('requests.delete_any') ? 'Cancel Request' : 'Delete' ?></button>
+            <button type="submit" class="btn btn-danger"><?= icon('delete') ?><?= e($label) ?></button>
           </form>
         <?php endif; ?>
       </div>
-    </section>
+    </div>
+
+    <dl class="details">
+      <div><dt>Borrower</dt><dd><?= e($r['borrower_name']) ?><span class="sub"><?= e($r['borrower_school_id'] . ' · ' . $r['borrower_type'] . ' · ' . $r['borrower_email']) ?></span></dd></div>
+      <div><dt>Item</dt><dd><?= e($r['equipment_name']) ?><span class="sub"><?= e($r['equipment_code'] . ' · ' . $r['category'] . ' · ' . $r['laboratory']) ?></span></dd></div>
+      <div><dt>Quantity</dt><dd><?= (int) $r['quantity'] ?></dd></div>
+      <div><dt>Purpose</dt><dd><?= e($r['purpose']) ?><?= $r['purpose_details'] ? ' — ' . e($r['purpose_details']) : '' ?></dd></div>
+      <div><dt>Dates</dt><dd><?= fmt_date($r['borrow_date']) ?> → <?= fmt_date($r['due_date']) ?><span class="sub"><?= (int) $r['loan_days'] ?>-day loan<?= $r['days_overdue'] ? ' · <strong class="text-danger">' . (int) $r['days_overdue'] . ' days overdue</strong>' : '' ?></span></dd></div>
+      <div><dt>Returned</dt><dd><?= fmt_date($r['returned_date']) ?><?= $r['returned_date'] && $r['returned_date'] > $r['due_date'] ? '<span class="sub">Returned late</span>' : '' ?></dd></div>
+      <div><dt>Remarks</dt><dd><?= e($r['remarks'] ?: '—') ?></dd></div>
+      <div><dt>Filed by</dt><dd><?= e($r['created_by_name'] ?? '—') ?><span class="sub"><?= fmt_datetime($r['created_at']) ?></span></dd></div>
+      <div><dt>Handled by</dt><dd><?= e($r['processed_by_name'] ?? '—') ?><span class="sub">Last change <?= fmt_datetime($r['updated_at']) ?></span></dd></div>
+    </dl>
 
     <?php if ($staff && in_array($r['status'], ['PENDING', 'APPROVED', 'BORROWED'], true)): ?>
-      <section class="panel process-panel" aria-labelledby="process-title">
-        <h2 id="process-title">Process this request</h2>
+      <section class="section" aria-labelledby="process-title">
+        <h2 id="process-title" class="section-title">Process this request</h2>
         <?php $free = available_units((int) $r['equipment_id'], (int) $r['id']); ?>
-        <p class="hint"><?= $free ?> of the item’s units are free for this request.</p>
-        <form method="post" action="requests.php" class="form-stack">
+        <form method="post" action="requests.php" class="stack">
           <?= csrf_field() ?>
           <input type="hidden" name="action" value="process">
           <input type="hidden" name="id" value="<?= (int) $r['id'] ?>">
           <div class="field">
-            <label for="note">Note to borrower <?= $r['status'] === 'BORROWED' ? '(optional, e.g. condition on return)' : '(required when rejecting)' ?></label>
+            <label for="note">Note to borrower <span class="optional"><?= $r['status'] === 'BORROWED' ? '(optional, e.g. condition on return)' : '(needed when rejecting)' ?></span></label>
             <input id="note" name="note" maxlength="255">
+            <p class="hint"><?= $free ?> unit<?= $free === 1 ? '' : 's' ?> of this item <?= $free === 1 ? 'is' : 'are' ?> free for this request.</p>
           </div>
           <div class="button-row">
             <?php if ($r['status'] === 'PENDING'): ?>
-              <button class="btn btn-primary" name="to" value="approve">Approve</button>
+              <button class="btn btn-primary" name="to" value="approve"><?= icon('check') ?>Approve</button>
             <?php elseif ($r['status'] === 'APPROVED'): ?>
-              <button class="btn btn-primary" name="to" value="release">Mark as Released</button>
+              <button class="btn btn-primary" name="to" value="release"><?= icon('release') ?>Mark as Released</button>
             <?php else: ?>
-              <button class="btn btn-primary" name="to" value="return">Mark as Returned</button>
+              <button class="btn btn-primary" name="to" value="return"><?= icon('return') ?>Mark as Returned</button>
             <?php endif; ?>
             <?php if (in_array($r['status'], ['PENDING', 'APPROVED'], true)): ?>
-              <button class="btn btn-danger" name="to" value="reject">Reject</button>
+              <button class="btn btn-danger" name="to" value="reject"><?= icon('close') ?>Reject</button>
             <?php endif; ?>
           </div>
         </form>
@@ -435,120 +447,124 @@ $filtered = $q !== '' || $status !== 'ALL' || $category !== 'ALL' || $type !== '
 $page_title = can('requests.view_all') ? 'Borrow Requests' : 'My Requests';
 require __DIR__ . '/includes/layout/header.php';
 ?>
-<div class="title-row">
-  <h1 class="view-title"><?= e($page_title) ?></h1>
-  <a class="btn btn-primary" href="requests.php?action=new">New Request</a>
+<div class="page-head">
+  <div>
+    <h1 class="page-title"><?= e($page_title) ?></h1>
+    <p class="page-lead"><?= can('requests.view_all') ? 'Every request in the labs. Search runs on the database.' : 'Only your own requests are shown.' ?></p>
+  </div>
+  <a class="btn btn-primary" href="requests.php?action=new"><?= icon('new') ?>New Request</a>
 </div>
 
-<form class="toolbar" method="get" role="search" aria-label="Search and filter requests">
-  <div class="field">
-    <label for="q">Search</label>
-    <input id="q" name="q" type="search" value="<?= e($q) ?>" placeholder="ID, borrower, item, purpose…">
-  </div>
-  <div class="field">
-    <label for="status">Status</label>
-    <select id="status" name="status">
-      <option value="ALL">All statuses</option>
-      <?php foreach (STATUS_LABELS as $k => $label): ?>
-        <option value="<?= $k ?>"<?= selected($status, $k) ?>><?= $label ?></option>
-      <?php endforeach; ?>
-    </select>
-  </div>
-  <div class="field">
-    <label for="category">Category</label>
-    <select id="category" name="category">
-      <option value="ALL">All categories</option>
-      <?php foreach ($categories as $c): ?>
-        <option<?= selected($category, $c['v']) ?>><?= e($c['v']) ?></option>
-      <?php endforeach; ?>
-    </select>
-  </div>
-  <?php if (can('requests.view_all')): ?>
-  <div class="field">
-    <label for="type">Borrower type</label>
-    <select id="type" name="type">
-      <option value="ALL">All types</option>
-      <?php foreach (BORROWER_TYPES as $t): ?>
-        <option<?= selected($type, $t) ?>><?= $t ?></option>
-      <?php endforeach; ?>
-    </select>
-  </div>
-  <?php endif; ?>
-  <div class="field">
-    <label for="sort">Sort by</label>
-    <select id="sort" name="sort">
-      <?php foreach (['created_at' => 'Date filed', 'code' => 'Request ID', 'borrower' => 'Borrower', 'equipment' => 'Item', 'borrow_date' => 'Borrow date', 'due_date' => 'Due date'] as $k => $label): ?>
-        <option value="<?= $k ?>"<?= selected($sort, $k) ?>><?= $label ?></option>
-      <?php endforeach; ?>
-    </select>
-  </div>
-  <div class="field">
-    <label for="dir">Order</label>
-    <select id="dir" name="dir">
-      <option value="desc"<?= selected($dir, 'DESC') ?>>Newest / Z–A first</option>
-      <option value="asc"<?= selected($dir, 'ASC') ?>>Oldest / A–Z first</option>
-    </select>
-  </div>
-  <div class="toolbar-actions">
+<form class="search" method="get" role="search" aria-label="Search and filter requests">
+  <div class="search-row">
+    <div class="search-input">
+      <?= icon('search') ?>
+      <label for="q" class="visually-hidden">Search</label>
+      <input id="q" name="q" type="search" value="<?= e($q) ?>" placeholder="Search ID, borrower, item, purpose…">
+    </div>
     <button type="submit" class="btn btn-primary">Search</button>
-    <?php if ($filtered): ?><a class="btn" href="requests.php">Clear</a><?php endif; ?>
+  </div>
+  <div class="filters">
+    <div class="field">
+      <label for="status">Status</label>
+      <select id="status" name="status" data-autosubmit>
+        <option value="ALL">All statuses</option>
+        <?php foreach (STATUS_LABELS as $k => $label): ?>
+          <option value="<?= $k ?>"<?= selected($status, $k) ?>><?= $label ?></option>
+        <?php endforeach; ?>
+      </select>
+    </div>
+    <div class="field">
+      <label for="category">Category</label>
+      <select id="category" name="category" data-autosubmit>
+        <option value="ALL">All categories</option>
+        <?php foreach ($categories as $c): ?>
+          <option<?= selected($category, $c['v']) ?>><?= e($c['v']) ?></option>
+        <?php endforeach; ?>
+      </select>
+    </div>
+    <?php if (can('requests.view_all')): ?>
+    <div class="field">
+      <label for="type">Borrower type</label>
+      <select id="type" name="type" data-autosubmit>
+        <option value="ALL">All types</option>
+        <?php foreach (BORROWER_TYPES as $t): ?>
+          <option<?= selected($type, $t) ?>><?= $t ?></option>
+        <?php endforeach; ?>
+      </select>
+    </div>
+    <?php endif; ?>
+    <div class="field">
+      <label for="sort">Sort by</label>
+      <select id="sort" name="sort" data-autosubmit>
+        <?php foreach (['created_at' => 'Date filed', 'code' => 'Request ID', 'borrower' => 'Borrower', 'equipment' => 'Item', 'borrow_date' => 'Borrow date', 'due_date' => 'Due date'] as $k => $label): ?>
+          <option value="<?= $k ?>"<?= selected($sort, $k) ?>><?= $label ?></option>
+        <?php endforeach; ?>
+      </select>
+    </div>
+    <div class="field">
+      <label for="dir">Order</label>
+      <select id="dir" name="dir" data-autosubmit>
+        <option value="desc"<?= selected($dir, 'DESC') ?>>Newest / Z–A</option>
+        <option value="asc"<?= selected($dir, 'ASC') ?>>Oldest / A–Z</option>
+      </select>
+    </div>
   </div>
 </form>
 
 <p class="result-count" role="status">
-  <?= $total ? 'Showing ' . ($offset + 1) . '–' . ($offset + count($rows)) . ' of ' . $total . ' request' . ($total > 1 ? 's' : '') : 'No requests found' ?>
-  <?= $q !== '' ? ' for “' . e($q) . '”' : '' ?>
+  <?= $total ? 'Showing ' . ($offset + 1) . '–' . ($offset + count($rows)) . ' of ' . $total . ' request' . ($total > 1 ? 's' : '') : 'No requests found' ?><?= $q !== '' ? ' for “' . e($q) . '”' : '' ?>
+  <?php if ($filtered): ?> · <a href="requests.php">Clear filters</a><?php endif; ?>
 </p>
 
 <?php if (!$rows): ?>
-  <div class="empty-state">
+  <div class="empty">
+    <?= icon($filtered ? 'search' : 'inbox') ?>
     <p><strong><?= $filtered ? 'Nothing matches your search.' : 'No borrow requests yet.' ?></strong></p>
-    <p class="empty-note"><?= $filtered ? 'Try fewer words or clear the filters.' : 'Requests you file will show up here.' ?></p>
-    <?php if ($filtered): ?><a class="btn" href="requests.php">Clear Filters</a><?php else: ?><a class="btn btn-primary" href="requests.php?action=new">New Request</a><?php endif; ?>
+    <p class="muted"><?= $filtered ? 'Try fewer words or clear the filters.' : 'Requests you file will show up here.' ?></p>
+    <?php if ($filtered): ?><a class="btn" href="requests.php">Clear Filters</a><?php else: ?><a class="btn btn-primary" href="requests.php?action=new"><?= icon('new') ?>New Request</a><?php endif; ?>
   </div>
 <?php else: ?>
-  <div class="table-wrap">
-    <table class="data-table">
-      <caption class="visually-hidden">Borrow requests</caption>
-      <thead>
+  <table class="table">
+    <caption class="visually-hidden">Borrow requests</caption>
+    <thead>
+      <tr>
+        <th scope="col">Request</th>
+        <?php if (can('requests.view_all')): ?><th scope="col">Borrower</th><?php endif; ?>
+        <th scope="col">Item</th>
+        <th scope="col" class="col-optional">Qty</th>
+        <th scope="col">Dates</th>
+        <th scope="col">Status</th>
+        <th scope="col"><span class="visually-hidden">Actions</span></th>
+      </tr>
+    </thead>
+    <tbody>
+      <?php foreach ($rows as $r): ?>
         <tr>
-          <th scope="col">Request</th>
-          <?php if (can('requests.view_all')): ?><th scope="col">Borrower</th><?php endif; ?>
-          <th scope="col">Item</th>
-          <th scope="col" class="col-optional">Qty</th>
-          <th scope="col">Dates</th>
-          <th scope="col">Status</th>
-          <th scope="col"><span class="visually-hidden">Actions</span></th>
-        </tr>
-      </thead>
-      <tbody>
-        <?php foreach ($rows as $r): ?>
-          <tr>
-            <td data-label="Request" class="cell-id"><?= e($r['code']) ?></td>
-            <?php if (can('requests.view_all')): ?>
-              <td data-label="Borrower"><?= e($r['borrower_name']) ?><span class="cell-sub"><?= e($r['borrower_school_id'] . ' · ' . $r['borrower_type']) ?></span></td>
+          <td data-label="Request" class="mono"><?= e($r['code']) ?></td>
+          <?php if (can('requests.view_all')): ?>
+            <td data-label="Borrower"><?= e($r['borrower_name']) ?><span class="sub"><?= e($r['borrower_school_id'] . ' · ' . $r['borrower_type']) ?></span></td>
+          <?php endif; ?>
+          <td data-label="Item"><?= e($r['equipment_name']) ?><span class="sub"><?= e($r['category']) ?></span></td>
+          <td data-label="Qty" class="col-optional"><?= (int) $r['quantity'] ?></td>
+          <td data-label="Dates"><?= fmt_date($r['borrow_date']) ?><span class="sub">due <?= fmt_date($r['due_date']) ?></span></td>
+          <td data-label="Status"><?= badge($r['display_status']) ?></td>
+          <td class="cell-actions">
+            <a class="btn btn-sm" href="requests.php?action=view&amp;id=<?= (int) $r['id'] ?>"><?= icon('view') ?>View</a>
+            <?php if (can_edit_request($r)): ?>
+              <a class="btn btn-sm btn-tertiary" href="requests.php?action=edit&amp;id=<?= (int) $r['id'] ?>"><?= icon('edit') ?>Edit</a>
             <?php endif; ?>
-            <td data-label="Item"><?= e($r['equipment_name']) ?><span class="cell-sub"><?= e($r['category']) ?></span></td>
-            <td data-label="Qty" class="col-optional"><?= (int) $r['quantity'] ?></td>
-            <td data-label="Dates"><?= fmt_date($r['borrow_date']) ?><span class="cell-sub">due <?= fmt_date($r['due_date']) ?></span></td>
-            <td data-label="Status"><?= badge($r['display_status']) ?></td>
-            <td class="cell-actions">
-              <a class="btn btn-sm" href="requests.php?action=view&amp;id=<?= (int) $r['id'] ?>">View</a>
-              <?php if (can_edit_request($r)): ?>
-                <a class="btn btn-sm" href="requests.php?action=edit&amp;id=<?= (int) $r['id'] ?>">Edit</a>
-              <?php endif; ?>
-            </td>
-          </tr>
-        <?php endforeach; ?>
-      </tbody>
-    </table>
-  </div>
+          </td>
+        </tr>
+      <?php endforeach; ?>
+    </tbody>
+  </table>
 
   <?php if ($pages > 1): ?>
     <nav class="pagination" aria-label="Pages">
-      <?php if ($page > 1): ?><a class="btn btn-sm" href="<?= e(query_with(['page' => $page - 1])) ?>">Previous</a><?php else: ?><span></span><?php endif; ?>
+      <?php if ($page > 1): ?><a class="btn btn-tertiary" href="<?= e(query_with(['page' => $page - 1])) ?>"><?= icon('back') ?>Previous</a><?php endif; ?>
       <span>Page <?= $page ?> of <?= $pages ?></span>
-      <?php if ($page < $pages): ?><a class="btn btn-sm" href="<?= e(query_with(['page' => $page + 1])) ?>">Next</a><?php else: ?><span></span><?php endif; ?>
+      <?php if ($page < $pages): ?><a class="btn btn-tertiary" href="<?= e(query_with(['page' => $page + 1])) ?>">Next<?= icon('next') ?></a><?php endif; ?>
     </nav>
   <?php endif; ?>
 <?php endif; ?>

@@ -121,15 +121,21 @@ if ($action === 'new' || $action === 'edit') {
     $err = fn($k) => '<p class="error" id="' . $k . '-error">' . e($errors[$k] ?? '') . '</p>';
     $inv = fn($k) => isset($errors[$k]) ? ' aria-invalid="true" aria-describedby="' . $k . '-error"' : '';
     ?>
-    <p class="back-link"><a href="equipment.php">← Equipment</a></p>
-    <h1 class="view-title"><?= $isEdit ? 'Edit ' . e($form['code']) : 'Add equipment' ?></h1>
+    <a class="back-link" href="equipment.php"><?= icon('back') ?>Equipment</a>
+    <div class="page-head">
+      <div>
+        <h1 class="page-title"><?= $isEdit ? 'Edit ' . e($form['name']) : 'Add equipment' ?></h1>
+        <p class="page-lead"><?= $isEdit ? e($form['code']) . ' · changes apply to every request right away.' : 'The item code is given automatically.' ?></p>
+      </div>
+    </div>
 
-    <form method="post" action="equipment.php" class="form-grid" novalidate>
+    <form method="post" action="equipment.php" class="form" novalidate>
       <?= csrf_field() ?>
       <input type="hidden" name="action" value="save">
       <input type="hidden" name="id" value="<?= (int) $form['id'] ?>">
-      <fieldset>
+      <fieldset class="form-section">
         <legend>Item</legend>
+        <div class="form-fields">
         <div class="field field-wide">
           <label for="name">Name</label>
           <input id="name" name="name" maxlength="120" value="<?= e($form['name']) ?>"<?= $inv('name') ?>>
@@ -147,6 +153,11 @@ if ($action === 'new' || $action === 'edit') {
           <datalist id="lab-list"><?php foreach ($labs as $l): ?><option value="<?= e($l['v']) ?>"><?php endforeach; ?></datalist>
           <?= $err('laboratory') ?>
         </div>
+      </div>
+      </fieldset>
+      <fieldset class="form-section">
+        <legend>Stock</legend>
+        <div class="form-fields">
         <div class="field">
           <label for="total_units">Total units</label>
           <input id="total_units" name="total_units" type="number" min="1" max="999" inputmode="numeric" value="<?= e($form['total_units']) ?>"<?= $inv('total_units') ?>>
@@ -157,18 +168,19 @@ if ($action === 'new' || $action === 'edit') {
           <select id="item_condition" name="item_condition"<?= $inv('item_condition') ?>>
             <?php foreach (CONDITIONS as $c): ?><option<?= selected($form['item_condition'], $c) ?>><?= e($c) ?></option><?php endforeach; ?>
           </select>
-          <p class="hint">Retired items stay in the records but can’t be borrowed.</p>
+          <p class="hint">Retired items stay on record but can’t be borrowed.</p>
           <?= $err('item_condition') ?>
         </div>
         <div class="field field-wide">
-          <label for="description">Description (optional)</label>
+          <label for="description">Description <span class="optional">(optional)</span></label>
           <textarea id="description" name="description" rows="3" maxlength="1000"<?= $inv('description') ?>><?= e($form['description']) ?></textarea>
           <?= $err('description') ?>
         </div>
+      </div>
       </fieldset>
       <div class="form-actions">
-        <button type="submit" class="btn btn-primary"><?= $isEdit ? 'Save Changes' : 'Add Equipment' ?></button>
-        <a class="btn" href="equipment.php">Cancel</a>
+        <a class="btn btn-tertiary" href="equipment.php">Cancel</a>
+        <button type="submit" class="btn btn-primary"><?= icon('check') ?><?= $isEdit ? 'Save Changes' : 'Add Equipment' ?></button>
       </div>
     </form>
     <?php
@@ -204,95 +216,98 @@ $filtered = $q !== '' || $category !== 'ALL' || $stock !== 'ALL';
 $page_title = 'Equipment';
 require __DIR__ . '/includes/layout/header.php';
 ?>
-<div class="title-row">
-  <h1 class="view-title">Equipment</h1>
-  <?php if (can('equipment.create')): ?><a class="btn btn-primary" href="equipment.php?action=new">Add Equipment</a><?php endif; ?>
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Equipment</h1>
+    <p class="page-lead">Free units = total units − units that are approved or borrowed.</p>
+  </div>
+  <?php if (can('equipment.create')): ?><a class="btn btn-primary" href="equipment.php?action=new"><?= icon('new') ?>Add Equipment</a><?php endif; ?>
 </div>
-<p class="view-lead">Free units = total units − units that are approved or borrowed.</p>
 
-<form class="toolbar" method="get" role="search" aria-label="Search equipment">
-  <div class="field">
-    <label for="q">Search</label>
-    <input id="q" name="q" type="search" value="<?= e($q) ?>" placeholder="Code, name, category, lab…">
-  </div>
-  <div class="field">
-    <label for="category">Category</label>
-    <select id="category" name="category">
-      <option value="ALL">All categories</option>
-      <?php foreach ($categories as $c): ?><option<?= selected($category, $c['v']) ?>><?= e($c['v']) ?></option><?php endforeach; ?>
-    </select>
-  </div>
-  <div class="field">
-    <label for="stock">Availability</label>
-    <select id="stock" name="stock">
-      <option value="ALL">Any</option>
-      <option value="available"<?= selected($stock, 'available') ?>>Has free units</option>
-      <option value="low"<?= selected($stock, 'low') ?>>Running low</option>
-      <option value="out"<?= selected($stock, 'out') ?>>None free</option>
-    </select>
-  </div>
-  <div class="toolbar-actions">
+<form class="search" method="get" role="search" aria-label="Search equipment">
+  <div class="search-row">
+    <div class="search-input">
+      <?= icon('search') ?>
+      <label for="q" class="visually-hidden">Search</label>
+      <input id="q" name="q" type="search" value="<?= e($q) ?>" placeholder="Search code, name, category, lab…">
+    </div>
     <button type="submit" class="btn btn-primary">Search</button>
-    <?php if ($filtered): ?><a class="btn" href="equipment.php">Clear</a><?php endif; ?>
+  </div>
+  <div class="filters">
+    <div class="field">
+      <label for="category">Category</label>
+      <select id="category" name="category" data-autosubmit>
+        <option value="ALL">All categories</option>
+        <?php foreach ($categories as $c): ?><option<?= selected($category, $c['v']) ?>><?= e($c['v']) ?></option><?php endforeach; ?>
+      </select>
+    </div>
+    <div class="field">
+      <label for="stock">Availability</label>
+      <select id="stock" name="stock" data-autosubmit>
+        <option value="ALL">Any</option>
+        <option value="available"<?= selected($stock, 'available') ?>>Has free units</option>
+        <option value="low"<?= selected($stock, 'low') ?>>Running low</option>
+        <option value="out"<?= selected($stock, 'out') ?>>None free</option>
+      </select>
+    </div>
   </div>
 </form>
 
-<p class="result-count" role="status"><?= count($items) ?> item<?= count($items) === 1 ? '' : 's' ?><?= $q !== '' ? ' for “' . e($q) . '”' : '' ?></p>
+<p class="result-count" role="status"><?= count($items) ?> item<?= count($items) === 1 ? '' : 's' ?><?= $q !== '' ? ' for “' . e($q) . '”' : '' ?><?php if ($filtered): ?> · <a href="equipment.php">Clear filters</a><?php endif; ?></p>
 
 <?php if (!$items): ?>
-  <div class="empty-state">
+  <div class="empty">
+    <?= icon('search') ?>
     <p><strong>No equipment matches your search.</strong></p>
     <a class="btn" href="equipment.php">Clear Filters</a>
   </div>
 <?php else: ?>
-  <div class="table-wrap">
-    <table class="data-table">
-      <caption class="visually-hidden">Equipment inventory</caption>
-      <thead>
+  <table class="table">
+    <caption class="visually-hidden">Equipment inventory</caption>
+    <thead>
+      <tr>
+        <th scope="col">Code</th>
+        <th scope="col">Item</th>
+        <th scope="col" class="col-optional">Laboratory</th>
+        <th scope="col">Free units</th>
+        <th scope="col" class="col-optional">Condition</th>
+        <th scope="col"><span class="visually-hidden">Actions</span></th>
+      </tr>
+    </thead>
+    <tbody>
+      <?php foreach ($items as $it):
+          $available = max(0, (int) $it['available']);
+          $level = stock_level($available, (int) $it['total_units']);
+          $retired = $it['item_condition'] === 'Retired'; ?>
         <tr>
-          <th scope="col">Code</th>
-          <th scope="col">Item</th>
-          <th scope="col" class="col-optional">Laboratory</th>
-          <th scope="col">Free units</th>
-          <th scope="col">Condition</th>
-          <th scope="col"><span class="visually-hidden">Actions</span></th>
+          <td data-label="Code" class="mono"><?= e($it['code']) ?></td>
+          <td data-label="Item"><?= e($it['name']) ?><span class="sub"><?= e($it['category']) ?></span></td>
+          <td data-label="Laboratory" class="col-optional"><?= e($it['laboratory']) ?></td>
+          <td data-label="Free units"><div>
+            <strong><?= $available ?></strong> <span class="muted">of <?= (int) $it['total_units'] ?></span>
+            <div class="meter" data-level="<?= $level ?>" aria-hidden="true"><span style="width: <?= round($available / max(1, $it['total_units']) * 100) ?>%"></span></div>
+            <span class="badge badge-<?= $level ?>"><?= ['OK' => 'In stock', 'LOW' => 'Low', 'OUT' => 'None free'][$level] ?></span>
+          </div></td>
+          <td data-label="Condition" class="col-optional"><?= e($it['item_condition']) ?></td>
+          <td class="cell-actions">
+            <?php if (!$retired && $available > 0): ?>
+              <a class="btn btn-sm" href="requests.php?action=new&amp;equipment_id=<?= (int) $it['id'] ?>"><?= icon('borrow') ?>Borrow</a>
+            <?php endif; ?>
+            <?php if (can('equipment.update')): ?>
+              <a class="btn btn-sm btn-tertiary" href="equipment.php?action=edit&amp;id=<?= (int) $it['id'] ?>"><?= icon('edit') ?>Edit</a>
+            <?php endif; ?>
+            <?php if (can('equipment.delete')): ?>
+              <form method="post" action="equipment.php" class="inline-form" data-confirm="<?= e($it['name']) ?> (<?= e($it['code']) ?>) will be removed from the database. This can’t be undone." data-confirm-title="Delete this item?" data-confirm-label="Delete">
+                <?= csrf_field() ?>
+                <input type="hidden" name="action" value="delete">
+                <input type="hidden" name="id" value="<?= (int) $it['id'] ?>">
+                <button type="submit" class="btn btn-sm btn-danger" aria-label="Delete <?= e($it['name']) ?>"><?= icon('delete') ?>Delete</button>
+              </form>
+            <?php endif; ?>
+          </td>
         </tr>
-      </thead>
-      <tbody>
-        <?php foreach ($items as $it):
-            $available = max(0, (int) $it['available']);
-            $level = stock_level($available, (int) $it['total_units']);
-            $retired = $it['item_condition'] === 'Retired'; ?>
-          <tr>
-            <td data-label="Code" class="cell-id"><?= e($it['code']) ?></td>
-            <td data-label="Item"><?= e($it['name']) ?><span class="cell-sub"><?= e($it['category']) ?></span></td>
-            <td data-label="Laboratory" class="col-optional"><?= e($it['laboratory']) ?></td>
-            <td data-label="Free units"><div>
-              <strong><?= $available ?></strong> of <?= (int) $it['total_units'] ?>
-              <div class="stock-meter" data-level="<?= $level ?>" aria-hidden="true"><span style="width: <?= round($available / max(1, $it['total_units']) * 100) ?>%"></span></div>
-              <span class="badge badge-<?= $level ?>"><?= ['OK' => 'In stock', 'LOW' => 'Low', 'OUT' => 'None free'][$level] ?></span>
-            </div></td>
-            <td data-label="Condition"><?= e($it['item_condition']) ?></td>
-            <td class="cell-actions">
-              <?php if (!$retired && $available > 0): ?>
-                <a class="btn btn-sm" href="requests.php?action=new&amp;equipment_id=<?= (int) $it['id'] ?>">Borrow</a>
-              <?php endif; ?>
-              <?php if (can('equipment.update')): ?>
-                <a class="btn btn-sm" href="equipment.php?action=edit&amp;id=<?= (int) $it['id'] ?>">Edit</a>
-              <?php endif; ?>
-              <?php if (can('equipment.delete')): ?>
-                <form method="post" action="equipment.php" class="inline-form" data-confirm="Delete <?= e($it['name']) ?> (<?= e($it['code']) ?>)? This can’t be undone." data-confirm-label="Delete">
-                  <?= csrf_field() ?>
-                  <input type="hidden" name="action" value="delete">
-                  <input type="hidden" name="id" value="<?= (int) $it['id'] ?>">
-                  <button type="submit" class="btn btn-sm btn-danger">Delete</button>
-                </form>
-              <?php endif; ?>
-            </td>
-          </tr>
-        <?php endforeach; ?>
-      </tbody>
-    </table>
-  </div>
+      <?php endforeach; ?>
+    </tbody>
+  </table>
 <?php endif; ?>
 <?php require __DIR__ . '/includes/layout/footer.php'; ?>

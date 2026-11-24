@@ -1,0 +1,111 @@
+/* tokens, base and motion for the php app */
+:root {
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  --font-body: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --text-xs: .75rem;
+  --text-sm: .875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: clamp(1.5rem, 1.2rem + 1vw, 1.875rem);
+  --text-stat: clamp(1.5rem, 1.2rem + 1vw, 2rem);
+
+  --radius: 12px;
+  --radius-sm: 8px;
+
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --surface-muted: #f2f4f7;
+  --line: #e3e7ec;
+  --text: #16202c;
+  --text-muted: #5b6573;
+  --brand: #1f5fbf;
+  --brand-strong: #174a96;
+  --brand-soft: #e8effa;
+  --on-brand: #ffffff;
+
+  --success: #1b7a43; --success-bg: #e6f4ec;
+  --warning: #8a5a00; --warning-bg: #fdf1d8;
+  --danger: #b42318;  --danger-bg: #fcebea;
+  --info: #1f5fbf;    --info-bg: #e8effa;
+
+  --topbar-h: 64px;
+  --nav-w: 232px;
+  --content-w: 1100px;
+  --touch: 44px;
+  --ease: cubic-bezier(.2, .7, .2, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f141b;
+    --surface: #0f141b;
+    --surface-muted: #1a222d;
+    --line: #253041;
+    --text: #e7ecf2;
+    --text-muted: #9ea9b7;
+    --brand: #6ea4f5;
+    --brand-strong: #8db8f7;
+    --brand-soft: #16263f;
+    --on-brand: #0b1220;
+    --success: #5fd08f; --success-bg: #12291c;
+    --warning: #f3c265; --warning-bg: #2e240f;
+    --danger: #f28b82;  --danger-bg: #351715;
+    --info: #6ea4f5;    --info-bg: #16263f;
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--bg);
+}
+h1, h2, h3 { line-height: 1.25; margin: 0; }
+p { margin: 0; }
+a { color: var(--brand); }
+code { font-family: var(--font-mono); font-size: .9em; }
+[hidden] { display: none !important; }
+
+:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 4px; }
+[tabindex="-1"]:focus { outline: none; }
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px; height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.icon { width: 1.25em; height: 1.25em; flex-shrink: 0; }
+.muted { color: var(--text-muted); }
+.text-danger { color: var(--danger); }
+.mono { font-family: var(--font-mono); font-size: var(--text-sm); }
+
+/* logo: tokens so it follows dark mode */
+.logo-mark { width: 36px; height: 36px; flex-shrink: 0; }
+.logo-bg { fill: var(--brand); }
+.logo-line { stroke: var(--on-brand); }
+
+/* motion: one-shot, transform and opacity only */
+@keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes drop { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+@keyframes pop  { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: none; } }
+@keyframes grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}

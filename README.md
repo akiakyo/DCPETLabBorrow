@@ -103,7 +103,17 @@ Tables: `users`, `equipment`, `borrow_requests`, `activity_log`. Foreign keys li
 | `index.php`, `login.php`, `register.php`, `logout.php` | Entry point and authentication |
 | `dashboard.php`, `requests.php`, `equipment.php`, `users.php`, `account.php`, `activity.php` | One file per feature |
 | `includes/` | Config, database helpers, auth and permissions, shared logic, page layout |
-| `css/styles.css`, `css/app.css` | Design tokens and layout (from Units 1–3), plus styles for the PHP pages |
-| `js/site.js` | Mobile menu, in-app confirm dialog, form helpers |
+| `css/app/` | Styles for the system: `tokens.css` (colors, spacing, motion, dark mode), `shell.css` (top bar, menu, footer), `components.css` (buttons, forms, tables), `pages.css` (sign-in, dashboard, activity) |
+| `includes/icons.php`, `img/logo.svg` | Solar line icons and the LabBorrow logo (a flask inside a return arrow) |
+| `js/site.js` | Mobile menu, in-app confirm dialog, filters that apply on change, form helpers |
 | `database/labborrow_db.sql` | Full structure and demo records |
-| `index.html`, `js/*.js` (except `site.js`), `docs/UNITS-1-3.md` | Earlier front-end prototype (Units 1–3) |
+| `index.html`, `css/styles.css`, `js/*.js` (except `site.js`), `docs/UNITS-1-3.md` | Earlier front-end prototype (Units 1–3) |
+
+## Design
+
+The interface is a minimal single column. Sections are separated by spacing and 1px lines rather than boxes and shadows. It follows the system light or dark setting.
+
+- **Motion:** short one-time entrance animations that only move or fade elements. They turn off when the device asks for reduced motion.
+- **Touch:** every control is at least 44px tall.
+- **Confirmations:** deleting anything opens an in-app confirm dialog instead of the browser's pop-up.
+- **Icons:** [Solar](https://icon-sets.iconify.design/solar/) by 480 Design, licensed CC BY 4.0. They are bundled in the project, so the system works offline.
